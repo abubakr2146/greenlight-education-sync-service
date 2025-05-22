@@ -4,9 +4,13 @@ const {
   getAllRecordsForSync, 
   getRecordById,
   findAirtableRecordByZohoId,
+  findZohoLeadByAirtableId,
   getFieldIdToNameMapping 
 } = require('./airtableService');
-const { createAirtableRecordFromZohoLead } = require('./syncService');
+const { 
+  createAirtableRecordFromZohoLead,
+  createZohoLeadFromAirtableRecord 
+} = require('./syncService');
 const { 
   syncZohoToAirtable, 
   syncAirtableToZoho 
@@ -84,11 +88,9 @@ async function getAirtableChanges(sinceTimestamp) {
     return [];
   }
 
-  return response.records
-    .filter(record => record.fields['Zoho CRM ID']) // Only records linked to Zoho
-    .map(record => ({
+  return response.records.map(record => ({
       id: record.id,
-      zohoId: record.fields['Zoho CRM ID'],
+      zohoId: record.fields['Zoho CRM ID'] || null, // Allow null for new records
       modifiedTime: new Date(record.fields['Last Modified Time']).getTime(),
       data: record,
       source: 'airtable'
@@ -105,14 +107,14 @@ async function createSyncPlan(zohoChanges, airtableChanges) {
 
   // Create maps for quick lookup
   const zohoMap = new Map(zohoChanges.map(change => [change.id, change]));
-  const airtableMap = new Map(airtableChanges.map(change => [change.zohoId, change]));
+  const airtableMap = new Map(airtableChanges.filter(c => c.zohoId).map(change => [change.zohoId, change]));
 
   // Process Zoho changes
   for (const zohoChange of zohoChanges) {
     const airtableChange = airtableMap.get(zohoChange.id);
     
     if (!airtableChange) {
-      // No corresponding Airtable record - sync from Zoho
+      // No corresponding Airtable record - sync from Zoho (will create if needed)
       plan.zohoToAirtable.push(zohoChange);
     } else {
       // Both changed - compare timestamps
@@ -134,9 +136,13 @@ async function createSyncPlan(zohoChanges, airtableChanges) {
     }
   }
 
-  // Process Airtable-only changes
+  // Process Airtable changes
   for (const airtableChange of airtableChanges) {
-    if (!zohoMap.has(airtableChange.zohoId)) {
+    if (!airtableChange.zohoId) {
+      // Airtable record has no Zoho CRM ID - create new Zoho lead
+      plan.airtableToZoho.push(airtableChange);
+    } else if (!zohoMap.has(airtableChange.zohoId)) {
+      // Airtable record references non-existent Zoho lead
       plan.airtableToZoho.push(airtableChange);
     }
   }
@@ -182,14 +188,16 @@ async function executeSyncPlan(plan) {
       const success = await syncAirtableToZoho(change, { 
         compareValues: true, 
         verbose: false,
-        createMissing: false 
+        createMissing: true 
       });
       if (success) {
         successful++;
-        console.log(`✅ Synced Airtable record ${change.id} → Zoho ${change.zohoId}`);
+        const target = change.zohoId ? `Zoho ${change.zohoId}` : 'new Zoho lead';
+        console.log(`✅ Synced Airtable record ${change.id} → ${target}`);
       } else {
         failed++;
-        console.log(`❌ Failed to sync Airtable record ${change.id} → Zoho ${change.zohoId}`);
+        const target = change.zohoId ? `Zoho ${change.zohoId}` : 'new Zoho lead';
+        console.log(`❌ Failed to sync Airtable record ${change.id} → ${target}`);
       }
     } catch (error) {
       failed++;

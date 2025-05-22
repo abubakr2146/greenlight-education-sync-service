@@ -9,6 +9,9 @@ const FIELD_MAPPING = {
   },
   ZOHO_ID: {
     airtable: 'Zoho CRM ID'  // Airtable field name that stores Zoho lead ID
+  },
+  AIRTABLE_ID: {
+    zoho: 'Airtable_Record_ID'  // Zoho field name that stores Airtable record ID
   }
 };
 

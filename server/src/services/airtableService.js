@@ -94,24 +94,28 @@ async function createAirtableRecord(recordData, config = null) {
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
+      console.log(`❌ No Airtable config found`);
       return null;
     }
   }
 
   try {
-    const response = await axios.post(
-      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`,
-      recordData,
-      {
-        headers: {
-          'Authorization': `Bearer ${config.apiToken}`,
-          'Content-Type': 'application/json'
-        }
+    const url = `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`;
+    
+    const response = await axios.post(url, recordData, {
+      headers: {
+        'Authorization': `Bearer ${config.apiToken}`,
+        'Content-Type': 'application/json'
       }
-    );
+    });
     
     return response.data;
   } catch (error) {
+    console.log(`❌ Error creating Airtable record:`, error.message);
+    if (error.response) {
+      console.log(`❌ Response status:`, error.response.status);
+      console.log(`❌ Response data:`, JSON.stringify(error.response.data, null, 2));
+    }
     return null;
   }
 }

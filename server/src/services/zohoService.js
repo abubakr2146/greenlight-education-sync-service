@@ -327,10 +327,73 @@ async function getMultipleLeadDetails(leadIds, config = null) {
   }
 }
 
+// Create Zoho lead
+async function createZohoLead(leadData, config = null) {
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    // Check if token needs refresh
+    if (Date.now() >= config.tokenExpiry) {
+      const refreshed = await refreshZohoToken(config);
+      if (!refreshed) {
+        return null;
+      }
+    }
+    
+    const response = await axios.post(
+      `${config.apiDomain}/crm/v2/Leads`,
+      {
+        data: [leadData]
+      },
+      {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    // If token is invalid, try refreshing once
+    if (error.response?.data?.code === 'INVALID_TOKEN') {
+      const refreshed = await refreshZohoToken(config);
+      if (refreshed) {
+        // Retry the request with new token
+        try {
+          const response = await axios.post(
+            `${config.apiDomain}/crm/v2/Leads`,
+            {
+              data: [leadData]
+            },
+            {
+              headers: {
+                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          return response.data;
+        } catch (retryError) {
+          return null;
+        }
+      }
+    }
+    
+    return null;
+  }
+}
+
 module.exports = {
   refreshZohoToken,
   getLeadDetails,
   updateZohoLead,
+  createZohoLead,
   getChangedFields,
   logLeadDetails,
   getLeadsModifiedSince,

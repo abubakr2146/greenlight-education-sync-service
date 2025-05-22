@@ -2,10 +2,12 @@ const { getLeadDetails } = require('./zohoService');
 const { 
   getRecordById,
   findAirtableRecordByZohoId,
+  findZohoLeadByAirtableId,
   getFieldIdToNameMapping 
 } = require('./airtableService');
 const { 
   createAirtableRecordFromZohoLead,
+  createZohoLeadFromAirtableRecord,
   syncFieldFromZohoToAirtable,
   syncFieldFromAirtableToZoho
 } = require('./syncService');
@@ -170,6 +172,24 @@ async function syncAirtableToZoho(airtableData, options = {}) {
   const { id: recordId, zohoId, data: recordData } = airtableData;
   
   try {
+    // Check if Zoho lead exists for this Airtable record
+    let actualZohoId = zohoId;
+    if (!actualZohoId) {
+      actualZohoId = await findZohoLeadByAirtableId(recordId);
+    }
+    
+    if (!actualZohoId) {
+      if (!opts.createMissing) {
+        if (opts.verbose) console.log(`⏭️  Skipping creation of Zoho lead for Airtable record ${recordId}`);
+        return false;
+      }
+      
+      // Create new Zoho lead
+      if (opts.verbose) console.log(`📝 Creating new Zoho lead for Airtable record ${recordId}`);
+      const createdLead = await createZohoLeadFromAirtableRecord(recordId, recordData);
+      return !!createdLead;
+    }
+
     // Get field mapping
     const fieldMapping = fieldMappingCache.getFieldMapping();
     if (!fieldMapping) {
@@ -183,9 +203,9 @@ async function syncAirtableToZoho(airtableData, options = {}) {
     // Get current Zoho lead for comparison (if needed)
     let currentZohoLead = null;
     if (opts.compareValues) {
-      const zohoResponse = await getLeadDetails(zohoId);
+      const zohoResponse = await getLeadDetails(actualZohoId);
       if (!zohoResponse || !zohoResponse.data || !zohoResponse.data[0]) {
-        if (opts.verbose) console.log(`⚠️  Could not fetch current Zoho lead ${zohoId}`);
+        if (opts.verbose) console.log(`⚠️  Could not fetch current Zoho lead ${actualZohoId}`);
         return false;
       }
       currentZohoLead = zohoResponse.data[0];

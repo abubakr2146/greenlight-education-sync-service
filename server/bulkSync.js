@@ -37,6 +37,7 @@ class BulkSync {
       zohoToAirtable: 0,
       airtableToZoho: 0,
       newAirtableRecords: 0,
+      newZohoLeads: 0,
       conflicts: 0,
       errors: 0,
       skipped: 0
@@ -77,7 +78,8 @@ class BulkSync {
       console.log('📈 Sync Plan Summary:');
       console.log(`├─ Zoho → Airtable: ${syncPlan.zohoToAirtable.length}`);
       console.log(`├─ Airtable → Zoho: ${syncPlan.airtableToZoho.length}`);
-      console.log(`├─ New Airtable records: ${syncPlan.newRecords.length}`);
+      console.log(`├─ New Airtable records: ${syncPlan.newAirtableRecords.length}`);
+      console.log(`├─ New Zoho leads: ${syncPlan.newZohoLeads.length}`);
       console.log(`├─ Conflicts (manual review): ${syncPlan.conflicts.length}`);
       console.log(`└─ No sync needed: ${syncPlan.noSyncNeeded.length}\n`);
 
@@ -284,9 +286,7 @@ class BulkSync {
         console.log(''); // New line after dots
       }
 
-      return allRecords
-        .filter(record => record.fields['Zoho CRM ID']) // Only records with Zoho ID
-        .map(record => {
+      return allRecords.map(record => {
           const lastModified = record.fields['Last Modified Time'];
           const modifiedTime = new Date(lastModified).getTime();
           
@@ -296,7 +296,7 @@ class BulkSync {
           
           return {
             id: record.id,
-            zohoId: record.fields['Zoho CRM ID'],
+            zohoId: record.fields['Zoho CRM ID'] || null, // Allow null for new records
             modifiedTime: isNaN(modifiedTime) ? Date.now() : modifiedTime,
             data: record,
             source: 'airtable'
@@ -312,14 +312,15 @@ class BulkSync {
     const plan = {
       zohoToAirtable: [],
       airtableToZoho: [],
-      newRecords: [],
+      newAirtableRecords: [], // New Airtable records from Zoho leads
+      newZohoLeads: [],       // New Zoho leads from Airtable records
       conflicts: [],
       noSyncNeeded: []
     };
 
     // Create maps for quick lookup
     const zohoMap = new Map(zohoLeads.map(lead => [lead.id, lead]));
-    const airtableMap = new Map(airtableRecords.map(record => [record.zohoId, record]));
+    const airtableMap = new Map(airtableRecords.filter(r => r.zohoId).map(record => [record.zohoId, record]));
 
     // Process Zoho leads
     for (const zohoLead of zohoLeads) {
@@ -327,7 +328,7 @@ class BulkSync {
 
       if (!airtableRecord) {
         // No Airtable record exists - create new one
-        plan.newRecords.push(zohoLead);
+        plan.newAirtableRecords.push(zohoLead);
       } else {
         // Both exist - compare timestamps
         const zohoTime = zohoLead.modifiedTime;
@@ -368,9 +369,13 @@ class BulkSync {
       }
     }
 
-    // Process Airtable records that don't have corresponding Zoho leads
+    // Process Airtable records
     for (const airtableRecord of airtableRecords) {
-      if (!zohoMap.has(airtableRecord.zohoId)) {
+      if (!airtableRecord.zohoId) {
+        // Airtable record has no Zoho CRM ID - create new Zoho lead
+        plan.newZohoLeads.push(airtableRecord);
+      } else if (!zohoMap.has(airtableRecord.zohoId)) {
+        // Airtable record references non-existent Zoho lead
         plan.conflicts.push({
           type: 'orphaned_airtable',
           airtable: airtableRecord,
@@ -384,10 +389,10 @@ class BulkSync {
 
   async executeBulkSyncPlan(plan) {
     let processed = 0;
-    const total = plan.zohoToAirtable.length + plan.airtableToZoho.length + plan.newRecords.length;
+    const total = plan.zohoToAirtable.length + plan.airtableToZoho.length + plan.newAirtableRecords.length + plan.newZohoLeads.length;
 
-    // Create new Airtable records
-    for (const zohoLead of plan.newRecords) {
+    // Create new Airtable records from Zoho leads
+    for (const zohoLead of plan.newAirtableRecords) {
       try {
         processed++;
         console.log(`[${processed}/${total}] Creating new Airtable record for Zoho lead ${zohoLead.id}`);
@@ -395,12 +400,41 @@ class BulkSync {
         const created = await createAirtableRecordFromZohoLead(zohoLead.id, zohoLead.data);
         if (created) {
           this.stats.newAirtableRecords++;
+          if (this.verbose) {
+            console.log(`✅ Successfully created Airtable record ${created.id}`);
+          }
+        } else {
+          this.stats.errors++;
+          console.log(`❌ Failed to create Airtable record for Zoho lead ${zohoLead.id} - function returned null`);
+        }
+      } catch (error) {
+        this.stats.errors++;
+        console.log(`❌ Error creating Airtable record: ${error.message}`);
+        if (this.verbose) {
+          console.log(`❌ Stack trace: ${error.stack}`);
+        }
+      }
+    }
+
+    // Create new Zoho leads from Airtable records
+    for (const airtableRecord of plan.newZohoLeads) {
+      try {
+        processed++;
+        console.log(`[${processed}/${total}] Creating new Zoho lead for Airtable record ${airtableRecord.id}`);
+        
+        const success = await syncAirtableToZoho(airtableRecord, { 
+          compareValues: false, 
+          verbose: this.verbose,
+          createMissing: true // Enable creation of missing Zoho leads
+        });
+        if (success) {
+          this.stats.newZohoLeads = (this.stats.newZohoLeads || 0) + 1;
         } else {
           this.stats.errors++;
         }
       } catch (error) {
         this.stats.errors++;
-        console.log(`❌ Error creating record: ${error.message}`);
+        console.log(`❌ Error creating Zoho lead: ${error.message}`);
       }
     }
 
@@ -468,13 +502,24 @@ class BulkSync {
   }
 
   showDetailedPlan(plan) {
-    if (plan.newRecords.length > 0) {
+    if (plan.newAirtableRecords.length > 0) {
       console.log('🆕 New Airtable records to create:');
-      plan.newRecords.slice(0, 5).forEach(lead => {
+      plan.newAirtableRecords.slice(0, 5).forEach(lead => {
         console.log(`   - Zoho lead ${lead.id}`);
       });
-      if (plan.newRecords.length > 5) {
-        console.log(`   ... and ${plan.newRecords.length - 5} more`);
+      if (plan.newAirtableRecords.length > 5) {
+        console.log(`   ... and ${plan.newAirtableRecords.length - 5} more`);
+      }
+      console.log('');
+    }
+
+    if (plan.newZohoLeads.length > 0) {
+      console.log('🆕 New Zoho leads to create:');
+      plan.newZohoLeads.slice(0, 5).forEach(record => {
+        console.log(`   - Airtable record ${record.id}`);
+      });
+      if (plan.newZohoLeads.length > 5) {
+        console.log(`   ... and ${plan.newZohoLeads.length - 5} more`);
       }
       console.log('');
     }
@@ -518,14 +563,15 @@ class BulkSync {
     console.log('');
     console.log('📈 Sync Results:');
     console.log(`├─ New Airtable Records: ${this.stats.newAirtableRecords}`);
+    console.log(`├─ New Zoho Leads: ${this.stats.newZohoLeads}`);
     console.log(`├─ Zoho → Airtable: ${this.stats.zohoToAirtable}`);
     console.log(`├─ Airtable → Zoho: ${this.stats.airtableToZoho}`);
     console.log(`├─ Errors: ${this.stats.errors}`);
-    console.log(`└─ Total Operations: ${this.stats.newAirtableRecords + this.stats.zohoToAirtable + this.stats.airtableToZoho}`);
+    console.log(`└─ Total Operations: ${this.stats.newAirtableRecords + this.stats.newZohoLeads + this.stats.zohoToAirtable + this.stats.airtableToZoho}`);
     
+    const totalSuccessful = this.stats.newAirtableRecords + this.stats.newZohoLeads + this.stats.zohoToAirtable + this.stats.airtableToZoho;
     const successRate = this.stats.errors > 0 ? 
-      Math.round(((this.stats.newAirtableRecords + this.stats.zohoToAirtable + this.stats.airtableToZoho) / 
-        (this.stats.newAirtableRecords + this.stats.zohoToAirtable + this.stats.airtableToZoho + this.stats.errors)) * 100) : 100;
+      Math.round((totalSuccessful / (totalSuccessful + this.stats.errors)) * 100) : 100;
     
     console.log(`\n✨ Success Rate: ${successRate}%`);
   }

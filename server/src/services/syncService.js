@@ -1,7 +1,7 @@
 const { FIELD_MAPPING } = require('../config/config');
 const fieldMappingCache = require('../utils/fieldMappingCache');
 const { shouldSkipSync } = require('../utils/syncTracker');
-const { getLeadDetails, updateZohoLead } = require('./zohoService');
+const { getLeadDetails, updateZohoLead, createZohoLead } = require('./zohoService');
 const { 
   updateAirtableRecord, 
   createAirtableRecord, 
@@ -57,6 +57,23 @@ function getZohoCrmIdMapping() {
   
   // Fallback to static mapping
   return FIELD_MAPPING.ZOHO_ID;
+}
+
+// Helper function to get Airtable ID field mapping using cache
+function getAirtableIdMapping() {
+  const fieldMapping = fieldMappingCache.getFieldMapping();
+  
+  if (!fieldMapping) {
+    return FIELD_MAPPING.AIRTABLE_ID;
+  }
+  
+  // Look for AIRTABLE_ID or equivalent in dynamic mapping
+  if (fieldMapping.AIRTABLE_ID || fieldMapping['Airtable_Record_ID']) {
+    return fieldMapping.AIRTABLE_ID || fieldMapping['Airtable_Record_ID'];
+  }
+  
+  // Fallback to static mapping
+  return FIELD_MAPPING.AIRTABLE_ID;
 }
 
 // Helper function to find or create Airtable record for a Zoho lead
@@ -204,15 +221,110 @@ async function createAirtableRecordFromZohoLead(leadId, leadData) {
       recordData.fields[zohoCrmIdMapping.airtable] = leadId;
     }
     
-    // Add phone if available and mapped
-    const phoneMapping = getFieldMappingFor('Phone');
-    if (phoneMapping && leadData[phoneMapping.zoho]) {
-      recordData.fields[phoneMapping.airtable] = leadData[phoneMapping.zoho];
+    // Get field mapping and populate mapped fields from Zoho lead data
+    const fieldMapping = fieldMappingCache.getFieldMapping();
+    if (fieldMapping) {
+      for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
+        if (leadData[zohoField] !== undefined && leadData[zohoField] !== null && leadData[zohoField] !== '') {
+          // Skip the Zoho CRM ID field as we already handled it
+          if (mapping.airtable !== (zohoCrmIdMapping?.airtable)) {
+            let value = leadData[zohoField];
+            
+            // Transform complex objects to strings or skip problematic fields
+            if (typeof value === 'object' && value !== null) {
+              if (zohoField === 'Owner') {
+                // Skip Owner field for now as it's likely a linked record field in Airtable
+                continue;
+              } else if (Array.isArray(value)) {
+                // For arrays, join with commas
+                value = value.join(', ');
+              } else {
+                // For other objects, use JSON string or specific property
+                value = value.name || value.value || JSON.stringify(value);
+              }
+            }
+            
+            // Additional validation for field types that might cause issues
+            if (typeof value === 'string' && value.trim() === '') {
+              continue;
+            }
+            
+            recordData.fields[mapping.airtable] = value;
+          }
+        }
+      }
+    } else {
+      // Fallback: add phone if available and mapped
+      const phoneMapping = getFieldMappingFor('Phone');
+      if (phoneMapping && leadData[phoneMapping.zoho]) {
+        recordData.fields[phoneMapping.airtable] = leadData[phoneMapping.zoho];
+      }
     }
     
     const createdRecord = await createAirtableRecord(recordData);
     
     return createdRecord;
+  } catch (error) {
+    console.log(`❌ Error in createAirtableRecordFromZohoLead: ${error.message}`);
+    return null;
+  }
+}
+
+// Create Zoho lead from Airtable record
+async function createZohoLeadFromAirtableRecord(recordId, recordData) {
+  try {
+    const leadData = {};
+    
+    // Get field mapping
+    const fieldMapping = fieldMappingCache.getFieldMapping();
+    if (!fieldMapping) {
+      return null;
+    }
+    
+    // Get field ID to name mapping for translating Airtable field IDs
+    const { getFieldIdToNameMapping } = require('./airtableService');
+    const fieldIdToName = await getFieldIdToNameMapping();
+    
+    // Map Airtable fields to Zoho fields
+    for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
+      const airtableFieldId = mapping.airtable;
+      const airtableFieldName = fieldIdToName[airtableFieldId] || airtableFieldId;
+      const airtableValue = recordData.fields[airtableFieldName];
+      
+      if (airtableValue !== undefined && airtableValue !== null && airtableValue !== '') {
+        leadData[zohoField] = airtableValue;
+      }
+    }
+    
+    // Add the Airtable record ID to the lead data before creating
+    const airtableIdMapping = getAirtableIdMapping();
+    if (airtableIdMapping) {
+      leadData[airtableIdMapping.zoho] = recordId;
+    }
+    
+    // Create the lead in Zoho
+    const createResponse = await createZohoLead(leadData);
+    
+    if (createResponse && createResponse.data && createResponse.data[0]) {
+      const newZohoLead = createResponse.data[0];
+      const newZohoLeadId = newZohoLead.details.id;
+      
+      // Update the Airtable record with the new Zoho CRM ID
+      const zohoCrmIdMapping = getZohoCrmIdMapping();
+      if (zohoCrmIdMapping && newZohoLeadId) {
+        const fieldUpdates = {
+          [zohoCrmIdMapping.airtable]: newZohoLeadId
+        };
+        await updateAirtableRecord(recordId, fieldUpdates);
+      }
+      
+      return {
+        id: newZohoLeadId,
+        data: newZohoLead.details
+      };
+    }
+    
+    return null;
   } catch (error) {
     return null;
   }
@@ -342,6 +454,7 @@ module.exports = {
   
   // Record management
   createAirtableRecordFromZohoLead,
+  createZohoLeadFromAirtableRecord,
   findOrCreateAirtableRecord,
   
   // Update handlers
@@ -351,6 +464,7 @@ module.exports = {
   // Utilities
   getFieldMappingFor,
   getZohoCrmIdMapping,
+  getAirtableIdMapping,
   
   // Constants
   SYNC_DIRECTIONS
