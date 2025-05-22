@@ -418,46 +418,77 @@ async function fetchDynamicFieldMapping(config = null) {
   console.log('📋 Fetching dynamic field mapping from Zoho Fields table...');
   
   try {
-    const response = await axios.get(
-      `${config.apiUrl}/${config.baseId}/tbl0JfUjWhV4TvLz2`, // Zoho Fields table ID
-      {
-        headers: {
-          'Authorization': `Bearer ${config.apiToken}`,
-          'Content-Type': 'application/json'
-        },
+    let allRecords = [];
+    let offset = null;
+    let pageCount = 0;
+    
+    // Fetch all records with pagination
+    do {
+      pageCount++;
+      console.log(`   Fetching page ${pageCount}...`);
+      
+      const params = {};
+      if (offset) {
+        params.offset = offset;
       }
-    );
+      
+      const response = await axios.get(
+        `${config.apiUrl}/${config.baseId}/tbl0JfUjWhV4TvLz2`, // Zoho Fields table ID
+        {
+          headers: {
+            'Authorization': `Bearer ${config.apiToken}`,
+            'Content-Type': 'application/json'
+          },
+          params: params
+        }
+      );
+      
+      const pageRecords = response.data.records || [];
+      allRecords.push(...pageRecords);
+      offset = response.data.offset;
+      
+      console.log(`   Page ${pageCount}: ${pageRecords.length} records (total so far: ${allRecords.length})`);
+      
+    } while (offset);
     
     const fieldMapping = {};
-    const records = response.data.records || [];
+    console.log(`✅ Found ${allRecords.length} total field mapping records`);
     
-    console.log(`✅ Found ${records.length} active field mappings`);
-    
-    for (const record of records) {
+    for (const record of allRecords) {
       const fields = record.fields;
       
       // Use correct field names from your Zoho Fields table
       const zohoFieldName = fields['Field Name']; // Zoho field name
-      const airtableFieldId = fields['Airtable Field ID']; // Airtable field ID
+      
+      // Try multiple field sources for the Airtable field ID
+      let airtableFieldId = fields['Airtable Field ID'] || fields['Field ID'] || fields['Airtable Field'];
       
       console.log(`   Record ${record.id}:`);
       console.log(`     - All fields: ${JSON.stringify(Object.keys(fields))}`);
       console.log(`     - Zoho field: ${zohoFieldName}`);
-      console.log(`     - Airtable field ID: ${airtableFieldId}`);
+      console.log(`     - Airtable Field ID: ${fields['Airtable Field ID']}`);
+      console.log(`     - Field ID: ${fields['Field ID']}`);
+      console.log(`     - Airtable Field: ${fields['Airtable Field']}`);
+      console.log(`     - Final airtable field: ${airtableFieldId}`);
       
       if (zohoFieldName && airtableFieldId) {
         // Handle both string and array values for airtableFieldId
         const finalAirtableFieldId = Array.isArray(airtableFieldId) ? airtableFieldId[0] : airtableFieldId;
         
-        console.log(`   ✅ Mapping: ${zohoFieldName} → ${finalAirtableFieldId}`);
-        
-        fieldMapping[zohoFieldName] = {
-          zoho: zohoFieldName,
-          airtable: finalAirtableFieldId, // Use field ID directly
-          recordId: record.id
-        };
+        // Only use if it looks like a field ID (starts with "fld")
+        if (typeof finalAirtableFieldId === 'string' && finalAirtableFieldId.startsWith('fld')) {
+          console.log(`   ✅ Mapping: ${zohoFieldName} → ${finalAirtableFieldId}`);
+          
+          fieldMapping[zohoFieldName] = {
+            zoho: zohoFieldName,
+            airtable: finalAirtableFieldId,
+            recordId: record.id
+          };
+        } else {
+          console.log(`   ❌ Skipping record - airtable field doesn't look like field ID: ${finalAirtableFieldId}`);
+        }
       } else {
-        console.log(`   ❌ Skipping record - missing data`);
+        console.log(`   ❌ Skipping record - missing data (Zoho: ${zohoFieldName}, Airtable: ${airtableFieldId})`);
       }
     }
     
