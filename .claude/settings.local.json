@@ -8,7 +8,11 @@
       "Bash(mkdir:*)",
       "Bash(pkill:*)",
       "Bash(mv:*)",
-      "WebFetch(domain:airtable.com)"
+      "WebFetch(domain:airtable.com)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(timeout:*)",
+      "Bash(true)"
     ],
     "deny": []
   }

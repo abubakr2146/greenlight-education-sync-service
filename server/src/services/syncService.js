@@ -8,6 +8,12 @@ const {
   findZohoLeadByAirtableId 
 } = require('./airtableService');
 
+// Constants
+const SYNC_DIRECTIONS = {
+  ZOHO_TO_AIRTABLE: 'zoho_to_airtable',
+  AIRTABLE_TO_ZOHO: 'airtable_to_zoho'
+};
+
 // Helper function to get field mapping for a specific field
 async function getFieldMappingFor(zohoFieldName) {
   const fieldMapping = await getFieldMapping();
@@ -40,25 +46,14 @@ async function getZohoCrmIdMapping() {
   return FIELD_MAPPING.ZOHO_ID;
 }
 
-// Sync phone field from Zoho to Airtable
-async function syncPhoneFromZohoToAirtable(leadId, newPhoneValue) {
-  console.log(`\n🔄 Syncing phone from Zoho lead ${leadId} to Airtable...`);
-  
-  // Get field mapping for Phone field
-  const phoneMapping = await getFieldMappingFor('Phone');
-  if (!phoneMapping) {
-    console.log(`⚠️  No field mapping found for Phone field`);
-    return;
-  }
-  
-  // For now, we'll need to implement a mapping between Zoho lead IDs and Airtable record IDs
+// Helper function to find or create Airtable record for a Zoho lead
+async function findOrCreateAirtableRecord(leadId) {
   let airtableRecordId = await findAirtableRecordByZohoId(leadId);
   
   if (!airtableRecordId) {
     console.log(`⚠️  No corresponding Airtable record found for Zoho lead ${leadId}`);
     console.log(`📝 Creating Airtable record for this lead...`);
     
-    // Get the lead details to create the Airtable record
     const leadDetails = await getLeadDetails(leadId);
     if (leadDetails && leadDetails.data && leadDetails.data[0]) {
       const createdRecord = await createAirtableRecordFromZohoLead(leadId, leadDetails.data[0]);
@@ -67,65 +62,140 @@ async function syncPhoneFromZohoToAirtable(leadId, newPhoneValue) {
         console.log(`✅ Created Airtable record: ${airtableRecordId}`);
       } else {
         console.log(`❌ Failed to create Airtable record`);
-        return;
+        return null;
       }
     } else {
       console.log(`❌ Could not fetch lead details to create Airtable record`);
-      return;
+      return null;
     }
   }
   
-  // IMPORTANT: Record this sync BEFORE making the update to prevent webhook loop
-  const { shouldSkipSync } = require('../utils/syncTracker');
-  const airtableField = phoneMapping.airtable;
-  const syncKey = `airtable:${airtableRecordId}:${airtableField}`;
-  
-  // Record that we're about to sync this value to Airtable
-  // This will prevent processing the resulting webhook
-  shouldSkipSync('airtable', airtableRecordId, airtableField, newPhoneValue);
-  console.log(`📝 Pre-recorded sync to prevent webhook loop: ${syncKey}`);
-  
-  const fieldUpdates = {};
-  fieldUpdates[airtableField] = newPhoneValue;
-  
-  await updateAirtableRecord(airtableRecordId, fieldUpdates);
+  return airtableRecordId;
 }
 
-// Sync phone field from Airtable to Zoho  
-async function syncPhoneFromAirtableToZoho(recordId, newPhoneValue) {
-  console.log(`\n🔄 Syncing phone from Airtable record ${recordId} to Zoho...`);
+// Helper function to record sync to prevent loops
+function recordSyncToPreventLoop(system, recordId, fieldId, value) {
+  shouldSkipSync(system, recordId, fieldId, value);
+  console.log(`📝 Pre-recorded sync to prevent webhook loop: ${system}:${recordId}:${fieldId}`);
+}
+
+// Generic sync function that handles both directions
+async function syncField(params) {
+  const {
+    direction,
+    sourceId,
+    fieldName,
+    value,
+    mapping
+  } = params;
+
+  if (direction === SYNC_DIRECTIONS.ZOHO_TO_AIRTABLE) {
+    return await syncFromZohoToAirtable(sourceId, fieldName, value, mapping);
+  } else if (direction === SYNC_DIRECTIONS.AIRTABLE_TO_ZOHO) {
+    return await syncFromAirtableToZoho(sourceId, fieldName, value, mapping);
+  } else {
+    throw new Error(`Invalid sync direction: ${direction}`);
+  }
+}
+
+// Internal function to sync from Zoho to Airtable
+async function syncFromZohoToAirtable(leadId, zohoFieldName, newValue, mapping) {
+  console.log(`\n🔄 Syncing ${zohoFieldName} from Zoho lead ${leadId} to Airtable...`);
   
-  // Get field mapping for Phone field
+  try {
+    // Find or create corresponding Airtable record
+    const airtableRecordId = await findOrCreateAirtableRecord(leadId);
+    if (!airtableRecordId) {
+      return false;
+    }
+    
+    // Pre-record sync to prevent webhook loop
+    const airtableField = mapping.airtable;
+    recordSyncToPreventLoop('airtable', airtableRecordId, airtableField, newValue);
+    
+    // Prepare and execute update
+    const fieldUpdates = { [airtableField]: newValue };
+    await updateAirtableRecord(airtableRecordId, fieldUpdates);
+    
+    console.log(`✅ Successfully synced ${zohoFieldName} to Airtable`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Error syncing ${zohoFieldName} from Zoho to Airtable:`, error.message);
+    return false;
+  }
+}
+
+// Internal function to sync from Airtable to Zoho
+async function syncFromAirtableToZoho(recordId, zohoFieldName, newValue, mapping) {
+  console.log(`\n🔄 Syncing ${zohoFieldName} from Airtable record ${recordId} to Zoho...`);
+  
+  try {
+    // Find corresponding Zoho lead
+    const zohoLeadId = await findZohoLeadByAirtableId(recordId);
+    if (!zohoLeadId) {
+      console.log(`⚠️  No corresponding Zoho lead found for Airtable record ${recordId}`);
+      return false;
+    }
+    
+    // Pre-record sync to prevent webhook loop
+    const zohoField = mapping.zoho;
+    recordSyncToPreventLoop('zoho', zohoLeadId, zohoField, newValue);
+    
+    // Prepare and execute update
+    const fieldUpdates = {
+      id: zohoLeadId,
+      [zohoField]: newValue
+    };
+    await updateZohoLead(zohoLeadId, fieldUpdates);
+    
+    console.log(`✅ Successfully synced ${zohoFieldName} to Zoho`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Error syncing ${zohoFieldName} from Airtable to Zoho:`, error.message);
+    return false;
+  }
+}
+
+// Simplified phone sync functions (now just thin wrappers)
+async function syncPhoneFromZohoToAirtable(leadId, newPhoneValue) {
   const phoneMapping = await getFieldMappingFor('Phone');
   if (!phoneMapping) {
     console.log(`⚠️  No field mapping found for Phone field`);
-    return;
+    return false;
   }
   
-  // Find the corresponding Zoho lead ID
-  const zohoLeadId = await findZohoLeadByAirtableId(recordId);
-  
-  if (!zohoLeadId) {
-    console.log(`⚠️  No corresponding Zoho lead found for Airtable record ${recordId}`);
-    return;
+  return await syncField({
+    direction: SYNC_DIRECTIONS.ZOHO_TO_AIRTABLE,
+    sourceId: leadId,
+    fieldName: 'Phone',
+    value: newPhoneValue,
+    mapping: phoneMapping
+  });
+}
+
+async function syncPhoneFromAirtableToZoho(recordId, newPhoneValue) {
+  const phoneMapping = await getFieldMappingFor('Phone');
+  if (!phoneMapping) {
+    console.log(`⚠️  No field mapping found for Phone field`);
+    return false;
   }
   
-  // IMPORTANT: Record this sync BEFORE making the update to prevent webhook loop
-  const { shouldSkipSync } = require('../utils/syncTracker');
-  const zohoField = phoneMapping.zoho;
-  const syncKey = `zoho:${zohoLeadId}:${zohoField}`;
-  
-  // Record that we're about to sync this value to Zoho
-  // This will prevent processing the resulting webhook
-  shouldSkipSync('zoho', zohoLeadId, zohoField, newPhoneValue);
-  console.log(`📝 Pre-recorded sync to prevent webhook loop: ${syncKey}`);
-  
-  const fieldUpdates = {
-    id: zohoLeadId
-  };
-  fieldUpdates[zohoField] = newPhoneValue;
-  
-  await updateZohoLead(zohoLeadId, fieldUpdates);
+  return await syncField({
+    direction: SYNC_DIRECTIONS.AIRTABLE_TO_ZOHO,
+    sourceId: recordId,
+    fieldName: 'Phone',
+    value: newPhoneValue,
+    mapping: phoneMapping
+  });
+}
+
+// Generic field sync functions (updated to use new internal functions)
+async function syncFieldFromZohoToAirtable(leadId, zohoFieldName, newValue, mapping) {
+  return await syncFromZohoToAirtable(leadId, zohoFieldName, newValue, mapping);
+}
+
+async function syncFieldFromAirtableToZoho(recordId, zohoFieldName, newValue, mapping) {
+  return await syncFromAirtableToZoho(recordId, zohoFieldName, newValue, mapping);
 }
 
 // Create Airtable record when new Zoho lead is created
@@ -133,9 +203,7 @@ async function createAirtableRecordFromZohoLead(leadId, leadData) {
   console.log(`\n📝 Creating Airtable record for new Zoho lead ${leadId}...`);
   
   try {
-    const recordData = {
-      fields: {}
-    };
+    const recordData = { fields: {} };
     
     // Get Zoho CRM ID mapping
     const zohoCrmIdMapping = await getZohoCrmIdMapping();
@@ -175,22 +243,50 @@ async function handleZohoLeadUpdate(leadId, leadData, changedFieldsInfo) {
     return;
   }
   
-  // Get all field mappings to check for changes
-  const fieldMapping = await getFieldMapping();
-  
-  // Check each changed field to see if it should be synced
-  for (const changedField of changedFieldsInfo.changedFields) {
-    const mapping = await getFieldMappingFor(changedField);
+  try {
+    // Check each changed field to see if it should be synced
+    const syncPromises = [];
     
-    if (mapping) {
-      const newValue = changedFieldsInfo.currentValues[changedField];
-      console.log(`🔄 ${changedField} field changed in Zoho lead ${leadId}: ${newValue}`);
+    for (const changedField of changedFieldsInfo.changedFields) {
+      const mapping = await getFieldMappingFor(changedField);
       
-      // Check if we should skip this sync to prevent loops
-      if (!shouldSkipSync('zoho', leadId, changedField, newValue)) {
-        await syncFieldFromZohoToAirtable(leadId, changedField, newValue, mapping);
+      if (mapping) {
+        const newValue = changedFieldsInfo.currentValues[changedField];
+        console.log(`🔄 ${changedField} field changed in Zoho lead ${leadId}: ${newValue}`);
+        
+        // Check if we should skip this sync to prevent loops
+        if (!shouldSkipSync('zoho', leadId, changedField, newValue)) {
+          // Add sync operation to promises array for parallel execution
+          syncPromises.push(
+            syncField({
+              direction: SYNC_DIRECTIONS.ZOHO_TO_AIRTABLE,
+              sourceId: leadId,
+              fieldName: changedField,
+              value: newValue,
+              mapping: mapping
+            })
+          );
+        }
       }
     }
+    
+    // Execute all syncs in parallel
+    if (syncPromises.length > 0) {
+      const results = await Promise.allSettled(syncPromises);
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+      const failed = results.filter(r => r.status === 'rejected' || r.value === false).length;
+      
+      console.log(`📊 Sync summary: ${successful} successful, ${failed} failed`);
+      
+      // Log any failures
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`❌ Sync ${index} failed:`, result.reason);
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in handleZohoLeadUpdate:', error.message);
   }
 }
 
@@ -198,124 +294,97 @@ async function handleZohoLeadUpdate(leadId, leadData, changedFieldsInfo) {
 async function handleAirtableRecordUpdate(recordId, changedFieldsInfo) {
   console.log(`\n🔍 Processing Airtable record update for ${recordId}`);
   
-  // Get dynamic field mappings
-  const fieldMapping = await getFieldMapping();
-  console.log(`📋 Available field mappings: ${Object.keys(fieldMapping).join(', ')}`);
-  
-  // Look for mapped field changes
-  for (const fieldInfo of changedFieldsInfo) {
-    console.log(`\n🔎 Checking field: ${fieldInfo.fieldName} (ID: ${fieldInfo.fieldId})`);
+  try {
+    // Get dynamic field mappings
+    const fieldMapping = await getFieldMapping();
+    console.log(`📋 Available field mappings: ${Object.keys(fieldMapping).join(', ')}`);
     
-    // Find if this Airtable field is mapped to a Zoho field
-    let mappedZohoField = null;
-    let mapping = null;
+    const syncPromises = [];
     
-    for (const [zohoField, fieldMap] of Object.entries(fieldMapping)) {
-      // Match against the field ID (primary) or field name (fallback)
-      if (fieldMap.airtable === fieldInfo.fieldId || fieldMap.airtable === fieldInfo.fieldName) {
-        mappedZohoField = zohoField;
-        mapping = fieldMap;
-        console.log(`✅ Found mapping: Airtable ${fieldInfo.fieldName} (${fieldInfo.fieldId}) → Zoho ${zohoField}`);
-        break;
-      }
-    }
-    
-    // Debug: Show what we're comparing
-    if (!mappedZohoField) {
-      console.log(`🔍 Comparing against stored mappings:`);
-      for (const [zohoField, fieldMap] of Object.entries(fieldMapping)) {
-        console.log(`   ${zohoField}: "${fieldMap.airtable}" (${typeof fieldMap.airtable}) === "${fieldInfo.fieldId}" (${typeof fieldInfo.fieldId})? ${fieldMap.airtable === fieldInfo.fieldId}`);
-        console.log(`   Length check: ${fieldMap.airtable.length} vs ${fieldInfo.fieldId.length}`);
-        console.log(`   String match: ${JSON.stringify(fieldMap.airtable)} === ${JSON.stringify(fieldInfo.fieldId)}`);
-      }
-    }
-    
-    if (mappedZohoField && mapping) {
-      console.log(`🔄 Syncing ${mappedZohoField} from Airtable to Zoho: ${JSON.stringify(fieldInfo.currentValue)}`);
+    // Look for mapped field changes
+    for (const fieldInfo of changedFieldsInfo) {
+      console.log(`\n🔎 Checking field: ${fieldInfo.fieldName} (ID: ${fieldInfo.fieldId})`);
       
-      // Check if we should skip this sync to prevent loops
-      const airtableFieldKey = fieldInfo.fieldId || fieldInfo.fieldName;
-      if (!shouldSkipSync('airtable', recordId, airtableFieldKey, fieldInfo.currentValue)) {
-        await syncFieldFromAirtableToZoho(recordId, mappedZohoField, fieldInfo.currentValue, mapping);
-      } else {
-        console.log(`⏭️  Skipping sync due to cooldown`);
+      // Find if this Airtable field is mapped to a Zoho field
+      let mappedZohoField = null;
+      let mapping = null;
+      
+      for (const [zohoField, fieldMap] of Object.entries(fieldMapping)) {
+        // Match against the field ID (primary) or field name (fallback)
+        if (fieldMap.airtable === fieldInfo.fieldId || fieldMap.airtable === fieldInfo.fieldName) {
+          mappedZohoField = zohoField;
+          mapping = fieldMap;
+          console.log(`✅ Found mapping: Airtable ${fieldInfo.fieldName} (${fieldInfo.fieldId}) → Zoho ${zohoField}`);
+          break;
+        }
       }
-    } else {
-      console.log(`⚠️  No Zoho mapping found for Airtable field: ${fieldInfo.fieldName || fieldInfo.fieldId}`);
+      
+      if (mappedZohoField && mapping) {
+        console.log(`🔄 Syncing ${mappedZohoField} from Airtable to Zoho: ${JSON.stringify(fieldInfo.currentValue)}`);
+        
+        // Check if we should skip this sync to prevent loops
+        const airtableFieldKey = fieldInfo.fieldId || fieldInfo.fieldName;
+        if (!shouldSkipSync('airtable', recordId, airtableFieldKey, fieldInfo.currentValue)) {
+          // Add sync operation to promises array for parallel execution
+          syncPromises.push(
+            syncField({
+              direction: SYNC_DIRECTIONS.AIRTABLE_TO_ZOHO,
+              sourceId: recordId,
+              fieldName: mappedZohoField,
+              value: fieldInfo.currentValue,
+              mapping: mapping
+            })
+          );
+        } else {
+          console.log(`⏭️  Skipping sync due to cooldown`);
+        }
+      } else {
+        console.log(`⚠️  No Zoho mapping found for Airtable field: ${fieldInfo.fieldName || fieldInfo.fieldId}`);
+      }
     }
-  }
-}
-
-// Generic function to sync any field from Zoho to Airtable
-async function syncFieldFromZohoToAirtable(leadId, zohoFieldName, newValue, mapping) {
-  console.log(`\n🔄 Syncing ${zohoFieldName} from Zoho lead ${leadId} to Airtable...`);
-  
-  // Find corresponding Airtable record
-  let airtableRecordId = await findAirtableRecordByZohoId(leadId);
-  
-  if (!airtableRecordId) {
-    console.log(`⚠️  No corresponding Airtable record found for Zoho lead ${leadId}`);
-    console.log(`📝 Creating Airtable record for this lead...`);
     
-    const leadDetails = await getLeadDetails(leadId);
-    if (leadDetails && leadDetails.data && leadDetails.data[0]) {
-      const createdRecord = await createAirtableRecordFromZohoLead(leadId, leadDetails.data[0]);
-      if (createdRecord) {
-        airtableRecordId = createdRecord.id;
-        console.log(`✅ Created Airtable record: ${airtableRecordId}`);
-      } else {
-        console.log(`❌ Failed to create Airtable record`);
-        return;
-      }
-    } else {
-      console.log(`❌ Could not fetch lead details to create Airtable record`);
-      return;
+    // Execute all syncs in parallel
+    if (syncPromises.length > 0) {
+      const results = await Promise.allSettled(syncPromises);
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+      const failed = results.filter(r => r.status === 'rejected' || r.value === false).length;
+      
+      console.log(`📊 Sync summary: ${successful} successful, ${failed} failed`);
+      
+      // Log any failures
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`❌ Sync ${index} failed:`, result.reason);
+        }
+      });
     }
+  } catch (error) {
+    console.error('❌ Error in handleAirtableRecordUpdate:', error.message);
   }
-  
-  // Pre-record sync to prevent webhook loop
-  const { shouldSkipSync } = require('../utils/syncTracker');
-  const airtableField = mapping.airtable;
-  shouldSkipSync('airtable', airtableRecordId, airtableField, newValue);
-  console.log(`📝 Pre-recorded sync to prevent webhook loop`);
-  
-  const fieldUpdates = {};
-  fieldUpdates[airtableField] = newValue;
-  
-  await updateAirtableRecord(airtableRecordId, fieldUpdates);
-}
-
-// Generic function to sync any field from Airtable to Zoho
-async function syncFieldFromAirtableToZoho(recordId, zohoFieldName, newValue, mapping) {
-  console.log(`\n🔄 Syncing ${zohoFieldName} from Airtable record ${recordId} to Zoho...`);
-  
-  const zohoLeadId = await findZohoLeadByAirtableId(recordId);
-  
-  if (!zohoLeadId) {
-    console.log(`⚠️  No corresponding Zoho lead found for Airtable record ${recordId}`);
-    return;
-  }
-  
-  // Pre-record sync to prevent webhook loop
-  const { shouldSkipSync } = require('../utils/syncTracker');
-  const zohoField = mapping.zoho;
-  shouldSkipSync('zoho', zohoLeadId, zohoField, newValue);
-  console.log(`📝 Pre-recorded sync to prevent webhook loop`);
-  
-  const fieldUpdates = {
-    id: zohoLeadId
-  };
-  fieldUpdates[zohoField] = newValue;
-  
-  await updateZohoLead(zohoLeadId, fieldUpdates);
 }
 
 module.exports = {
+  // Public API - simplified sync functions
   syncPhoneFromZohoToAirtable,
   syncPhoneFromAirtableToZoho,
+  syncField,
+  
+  // Backward compatibility - generic functions
   syncFieldFromZohoToAirtable,
   syncFieldFromAirtableToZoho,
+  
+  // Record management
   createAirtableRecordFromZohoLead,
+  findOrCreateAirtableRecord,
+  
+  // Update handlers
   handleZohoLeadUpdate,
-  handleAirtableRecordUpdate
+  handleAirtableRecordUpdate,
+  
+  // Utilities
+  getFieldMappingFor,
+  getZohoCrmIdMapping,
+  
+  // Constants
+  SYNC_DIRECTIONS
 };
