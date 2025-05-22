@@ -1,4 +1,4 @@
-const { getLeadsModifiedSince, getMultipleLeadDetails } = require('./zohoService');
+const { getLeadsModifiedSince, getMultipleLeadDetails, getLeadDetails } = require('./zohoService');
 const { 
   getRecordsModifiedSince, 
   getAllRecordsForSync, 
@@ -12,14 +12,9 @@ const {
 } = require('./syncService');
 const fieldMappingCache = require('../utils/fieldMappingCache');
 const { filterIgnoredFields } = require('../config/config');
-const { 
-  shouldSkipRecordSync, 
-  recordRecordSync, 
-  getRecordSyncStatus 
-} = require('../utils/syncTracker');
 
-// Track last sync timestamp
-let lastSyncTimestamp = Date.now() - (24 * 60 * 60 * 1000); // Start with 24 hours ago
+// Track last sync timestamp - start from when script is initiated
+let lastSyncTimestamp = Date.now();
 
 // Main polling sync function
 async function performSync() {
@@ -115,12 +110,6 @@ async function createSyncPlan(zohoChanges, airtableChanges) {
   for (const zohoChange of zohoChanges) {
     const airtableChange = airtableMap.get(zohoChange.id);
     
-    // Check if we should skip this record due to recent sync
-    if (shouldSkipRecordSync('zoho', zohoChange.id)) {
-      console.log(`🔄 Skipping Zoho lead ${zohoChange.id} - recently synced`);
-      continue;
-    }
-    
     if (!airtableChange) {
       // No corresponding Airtable record - sync from Zoho
       plan.zohoToAirtable.push(zohoChange);
@@ -147,11 +136,6 @@ async function createSyncPlan(zohoChanges, airtableChanges) {
   // Process Airtable-only changes
   for (const airtableChange of airtableChanges) {
     if (!zohoMap.has(airtableChange.zohoId)) {
-      // Check if we should skip this record due to recent sync
-      if (shouldSkipRecordSync('airtable', airtableChange.id)) {
-        console.log(`🔄 Skipping Airtable record ${airtableChange.id} - recently synced`);
-        continue;
-      }
       plan.airtableToZoho.push(airtableChange);
     }
   }
@@ -177,8 +161,6 @@ async function executeSyncPlan(plan) {
       if (success) {
         successful++;
         console.log(`✅ Synced Zoho lead ${change.id} → Airtable`);
-        // Record that we synced this record to prevent loops
-        recordRecordSync('zoho', change.id);
       } else {
         failed++;
         console.log(`❌ Failed to sync Zoho lead ${change.id} → Airtable`);
@@ -196,9 +178,6 @@ async function executeSyncPlan(plan) {
       if (success) {
         successful++;
         console.log(`✅ Synced Airtable record ${change.id} → Zoho ${change.zohoId}`);
-        // Record that we synced this record to prevent loops
-        recordRecordSync('airtable', change.id);
-        recordRecordSync('zoho', change.zohoId); // Also track the Zoho side
       } else {
         failed++;
         console.log(`❌ Failed to sync Airtable record ${change.id} → Zoho ${change.zohoId}`);
@@ -225,7 +204,14 @@ async function syncZohoToAirtable(change) {
     return !!createdRecord;
   }
 
-  // Update existing record - sync all mapped fields
+  // Get current Airtable record to compare values
+  const currentAirtableRecord = await getRecordById(airtableRecordId);
+  if (!currentAirtableRecord) {
+    console.log(`⚠️  Could not fetch current Airtable record ${airtableRecordId}`);
+    return false;
+  }
+
+  // Update existing record - sync only fields with different values
   const fieldMapping = fieldMappingCache.getFieldMapping();
   if (!fieldMapping) {
     console.log('⚠️  No field mapping available, skipping detailed sync');
@@ -234,18 +220,32 @@ async function syncZohoToAirtable(change) {
 
   let syncSuccess = true;
   const syncPromises = [];
+  let fieldsToSync = 0;
 
-  // Sync all mapped fields
+  // Compare and sync only changed fields
   for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
     if (leadData[zohoField] !== undefined && !shouldIgnoreField(zohoField)) {
-      syncPromises.push(
-        syncFieldFromZohoToAirtable(change.id, zohoField, leadData[zohoField], mapping)
-          .catch(error => {
-            console.log(`❌ Failed to sync field ${zohoField}:`, error.message);
-            syncSuccess = false;
-          })
-      );
+      const zohoValue = leadData[zohoField];
+      const airtableValue = currentAirtableRecord.fields[mapping.airtable];
+      
+      // Compare values - only sync if different
+      if (!areValuesEqual(zohoValue, airtableValue)) {
+        fieldsToSync++;
+        console.log(`🔄 Field ${zohoField}: "${airtableValue}" → "${zohoValue}"`);
+        syncPromises.push(
+          syncFieldFromZohoToAirtable(change.id, zohoField, zohoValue, mapping)
+            .catch(error => {
+              console.log(`❌ Failed to sync field ${zohoField}:`, error.message);
+              syncSuccess = false;
+            })
+        );
+      }
     }
+  }
+
+  if (fieldsToSync === 0) {
+    console.log(`⏭️  No field differences found for Zoho lead ${change.id}, skipping update`);
+    return true; // No changes needed is still success
   }
 
   await Promise.allSettled(syncPromises);
@@ -262,23 +262,44 @@ async function syncAirtableToZoho(change) {
     return false;
   }
 
+  // Get current Zoho lead to compare values
+  const currentZohoLead = await getLeadDetails(change.zohoId);
+  if (!currentZohoLead || !currentZohoLead.data || !currentZohoLead.data[0]) {
+    console.log(`⚠️  Could not fetch current Zoho lead ${change.zohoId}`);
+    return false;
+  }
+
+  const currentZohoData = currentZohoLead.data[0];
   let syncSuccess = true;
   const syncPromises = [];
+  let fieldsToSync = 0;
 
-  // Sync all mapped fields
+  // Compare and sync only changed fields
   for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
     const airtableField = mapping.airtable;
-    const fieldValue = recordData.fields[airtableField];
+    const airtableValue = recordData.fields[airtableField];
     
-    if (fieldValue !== undefined && !shouldIgnoreField(zohoField)) {
-      syncPromises.push(
-        syncFieldFromAirtableToZoho(change.id, zohoField, fieldValue, mapping)
-          .catch(error => {
-            console.log(`❌ Failed to sync field ${zohoField}:`, error.message);
-            syncSuccess = false;
-          })
-      );
+    if (airtableValue !== undefined && !shouldIgnoreField(zohoField)) {
+      const zohoValue = currentZohoData[zohoField];
+      
+      // Compare values - only sync if different
+      if (!areValuesEqual(airtableValue, zohoValue)) {
+        fieldsToSync++;
+        console.log(`🔄 Field ${zohoField}: "${zohoValue}" → "${airtableValue}"`);
+        syncPromises.push(
+          syncFieldFromAirtableToZoho(change.id, zohoField, airtableValue, mapping)
+            .catch(error => {
+              console.log(`❌ Failed to sync field ${zohoField}:`, error.message);
+              syncSuccess = false;
+            })
+        );
+      }
     }
+  }
+
+  if (fieldsToSync === 0) {
+    console.log(`⏭️  No field differences found for Airtable record ${change.id}, skipping update`);
+    return true; // No changes needed is still success
   }
 
   await Promise.allSettled(syncPromises);
@@ -297,16 +318,26 @@ function shouldIgnoreField(fieldName) {
   return ignoredZohoFields.includes(fieldName);
 }
 
+// Helper function to compare values for equality
+function areValuesEqual(value1, value2) {
+  // Handle null/undefined cases
+  if (value1 == null && value2 == null) return true;
+  if (value1 == null || value2 == null) return false;
+  
+  // Convert both to strings for comparison to handle type differences
+  const str1 = String(value1).trim();
+  const str2 = String(value2).trim();
+  
+  return str1 === str2;
+}
+
 // Get sync status
 function getSyncStatus() {
-  const recordSyncStatus = getRecordSyncStatus();
   return {
     lastSyncTimestamp,
     lastSyncTime: new Date(lastSyncTimestamp).toISOString(),
     fieldMappingReady: fieldMappingCache.isReady(),
-    fieldMappingCount: fieldMappingCache.getStatus().mappingCount,
-    activeRecordSyncs: recordSyncStatus.length,
-    recentlySyncedRecords: recordSyncStatus
+    fieldMappingCount: fieldMappingCache.getStatus().mappingCount
   };
 }
 
