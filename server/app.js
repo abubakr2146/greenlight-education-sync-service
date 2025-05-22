@@ -1,13 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 
-// Import handlers
-const { 
-  handleZohoWebhook, 
-  handleAirtableWebhook, 
-  handleHealthCheck 
-} = require('./src/handlers/webhookHandlers');
-
 // Import field mapping cache
 const fieldMappingCache = require('./src/utils/fieldMappingCache');
 
@@ -20,9 +13,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.post('/leads-notif', handleZohoWebhook);
-app.post('/airtable-notif', handleAirtableWebhook);
-app.get('/health', handleHealthCheck);
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'Server is running' });
+});
 
 // Add cache status endpoint
 app.get('/cache-status', (req, res) => {

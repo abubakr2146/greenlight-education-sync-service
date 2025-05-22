@@ -8,7 +8,5 @@
   "modules": [
     "Leads"
   ],
-  "webhookUrl": "https://0e6f-2407-aa80-314-ffe3-f5e7-ffef-d2c4-9d05.ngrok-free.app/leads-notif",
-  "apiDomain": "https://www.zohoapis.com",
-  "channelId": 1747893770521
+  "apiDomain": "https://www.zohoapis.com"
 }

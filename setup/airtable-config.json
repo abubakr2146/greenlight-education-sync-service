@@ -2,8 +2,6 @@
   "apiToken": "patFyW0ZGGmKwYI8q.d251362dd698318811c651619282fe3b6d2c679b6d4f83a3d5af2ef1f38599e9",
   "baseId": "app4xfaklobVjLusr",
   "tableName": "Leads",
-  "webhookUrl": "https://0e6f-2407-aa80-314-ffe3-f5e7-ffef-d2c4-9d05.ngrok-free.app/airtable-notif",
-  "webhookId": "achMz22CW5tcazZIT",
   "apiUrl": "https://api.airtable.com/v0",
   "tableId": "tbl2IMiFjIrsyw0bT"
 }

@@ -3,13 +3,11 @@
  * 
  * This script helps with:
  * 1. Collecting Airtable API token, base ID, and table name
- * 2. Setting up webhook notifications in Airtable
- * 3. Testing the connection to Airtable
- * 4. Saving all credentials to a local config file
+ * 2. Testing the connection to Airtable
+ * 3. Saving all credentials to a local config file
  * 
  * Usage: 
  * - First run: node airtable-setup.js setup
- * - Setup webhook: node airtable-setup.js webhook
  * - Test connection: node airtable-setup.js test
  */
 
@@ -27,8 +25,6 @@ const DEFAULT_CONFIG = {
   baseId: '',
   tableName: '',
   tableId: '',
-  webhookUrl: '',
-  webhookId: '',
   apiUrl: 'https://api.airtable.com/v0'
 };
 
@@ -107,13 +103,7 @@ async function initialSetup() {
   // Test the connection
   await testConnection(config);
   
-  // Ask for webhook URL
-  config.webhookUrl = await prompt('Enter your webhook URL (leave empty to skip webhook setup): ');
-  
-  if (config.webhookUrl) {
-    saveConfig(config);
-    await setupWebhook(config);
-  }
+  console.log('\n✅ Airtable setup complete!');
 }
 
 /**
@@ -171,86 +161,6 @@ async function getTableId(config) {
   }
 }
 
-/**
- * Setup webhook in Airtable
- * @param {Object} config - The configuration object
- */
-async function setupWebhook(config) {
-  if (!config.webhookUrl) {
-    config.webhookUrl = await prompt('Enter your webhook URL: ');
-    if (!config.webhookUrl) {
-      return;
-    }
-  }
-  
-  // Get table ID first
-  const tableId = await getTableId(config);
-  if (!tableId) {
-    return;
-  }
-  
-  // Create new webhook with proper payload
-  try {
-    const webhookData = {
-      notificationUrl: config.webhookUrl,
-      specification: {
-        options: {
-          filters: {
-            dataTypes: ['tableData'],
-            recordChangeScope: tableId
-          }
-        }
-      }
-    };
-    
-    const response = await axios.post(
-      `${config.apiUrl}/bases/${config.baseId}/webhooks`,
-      webhookData,
-      {
-        headers: {
-          'Authorization': `Bearer ${config.apiToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    // Save webhook ID to config
-    config.webhookId = response.data.id;
-    config.tableId = tableId; // Save table ID for future use
-    saveConfig(config);
-    
-  } catch (error) {
-    // Error creating webhook
-  }
-}
-
-/**
- * Delete webhook
- * @param {Object} config - The configuration object
- */
-async function deleteWebhook(config) {
-  if (!config.webhookId) {
-    return;
-  }
-  
-  try {
-    await axios.delete(
-      `${config.apiUrl}/bases/${config.baseId}/webhooks/${config.webhookId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${config.apiToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    config.webhookId = '';
-    saveConfig(config);
-    
-  } catch (error) {
-    // Error deleting webhook
-  }
-}
 
 /**
  * Main function to run the script
@@ -268,14 +178,6 @@ async function main() {
       
     case 'test':
       await testConnection(config);
-      break;
-      
-    case 'webhook':
-      await setupWebhook(config);
-      break;
-      
-    case 'delete-webhook':
-      await deleteWebhook(config);
       break;
       
     case 'help':

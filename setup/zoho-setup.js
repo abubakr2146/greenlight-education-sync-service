@@ -4,14 +4,12 @@
  * This script helps with:
  * 1. Generating an OAuth URL to obtain an authorization code
  * 2. Exchanging the authorization code for access and refresh tokens
- * 3. Setting up a webhook notification channel in Zoho
- * 4. Refreshing tokens when needed
- * 5. Saving all credentials to a local config file
+ * 3. Refreshing tokens when needed
+ * 4. Saving all credentials to a local config file
  * 
  * Usage: 
  * - First run: node zoho-setup.js setup
  * - Refresh tokens: node zoho-setup.js refresh
- * - Setup webhook: node zoho-setup.js webhook
  */
 
 const fs = require('fs');
@@ -31,8 +29,6 @@ const DEFAULT_CONFIG = {
   accessToken: '',
   tokenExpiry: 0,
   modules: ['Contacts'], // Add other modules as needed
-  webhookUrl: '',
-  channelId: 'zoho_airtable_sync_channel',
   apiDomain: 'https://www.zohoapis.com', // Change for different regions if needed
 };
 
@@ -149,16 +145,10 @@ async function initialSetup() {
     // Calculate expiry time (now + expires_in seconds)
     config.tokenExpiry = Date.now() + (tokenResponse.data.expires_in * 1000);
     
-    // Ask for webhook URL
-    config.webhookUrl = await prompt('Enter your webhook URL (leave empty to skip webhook setup): ');
-    
     // Save the updated config
     saveConfig(config);
     
-    // If webhook URL was provided, set up the webhook
-    if (config.webhookUrl) {
-      await setupWebhook(config);
-    }
+    console.log('\n✅ Zoho setup complete!');
     
   } catch (error) {
     // Error exchanging tokens
@@ -196,70 +186,6 @@ async function refreshAccessToken(config) {
   }
 }
 
-/**
- * Setup webhook notification channel in Zoho
- * @param {Object} config - The configuration object
- */
-async function setupWebhook(config) {
-  if (!config.webhookUrl) {
-    config.webhookUrl = await prompt('Enter your webhook URL: ');
-    if (!config.webhookUrl) {
-      return;
-    }
-  }
-  
-  // Make sure we have a valid access token
-  if (Date.now() >= config.tokenExpiry) {
-    config = await refreshAccessToken(config);
-  }
-  
-  // Prepare the events list based on configured modules
-  const events = [];
-  for (const module of config.modules) {
-    events.push(`${module}.create`, `${module}.edit`, `${module}.delete`);
-  }
-  
-  // Calculate expiry time (7 days from now)
-  const expiryDate = new Date();
-  expiryDate.setDate(expiryDate.getDate() + 7);
-  
-  // Generate a unique channel ID based on timestamp
-  const channelId = Date.now();
-  
-  try {
-    const response = await axios.post(
-      `${config.apiDomain}/crm/v2/actions/watch`,
-      {
-        watch: [
-          {
-            channel_id: channelId,
-            events: events,
-            notify_url: config.webhookUrl,
-            token: "zoho_sync_webhook_token"
-          }
-        ]
-      },
-      {
-        headers: {
-          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    // Update channel ID in case it changed
-    if (response.data.watch && response.data.watch[0]) {
-      config.channelId = response.data.watch[0].channel_id || channelId;
-      saveConfig(config);
-    } else {
-      config.channelId = channelId;
-      saveConfig(config);
-    }
-    
-  } catch (error) {
-    // Error setting up webhook
-  }
-}
 
 /**
  * Main function to run the script
@@ -277,10 +203,6 @@ async function main() {
       
     case 'refresh':
       await refreshAccessToken(config);
-      break;
-      
-    case 'webhook':
-      await setupWebhook(config);
       break;
       
     case 'help':

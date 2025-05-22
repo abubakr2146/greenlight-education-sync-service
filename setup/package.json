@@ -6,7 +6,6 @@
   "scripts": {
     "setup-zoho": "node zoho-setup.js setup",
     "refresh-token": "node zoho-setup.js refresh",
-    "setup-webhook": "node zoho-setup.js webhook",
     "start": "node index.js"
   },
   "dependencies": {
