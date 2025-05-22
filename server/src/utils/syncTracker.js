@@ -12,7 +12,6 @@ function shouldSkipSync(source, recordId, fieldName, newValue) {
     if ((now - lastSync.timestamp) < SYNC_COOLDOWN_MS) {
       // Check if the value is the same as what we just synced
       if (JSON.stringify(lastSync.value) === JSON.stringify(newValue)) {
-        console.log(`⏭️  Skipping sync - recently synced ${syncKey} with same value`);
         return true;
       }
     }

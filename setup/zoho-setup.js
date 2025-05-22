@@ -66,7 +66,7 @@ function loadConfig() {
       return JSON.parse(configData);
     }
   } catch (error) {
-    console.error('Error reading config file:', error.message);
+    // Error loading config
   }
   
   return { ...DEFAULT_CONFIG };
@@ -79,9 +79,8 @@ function loadConfig() {
 function saveConfig(config) {
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-    console.log(`Configuration saved to ${CONFIG_PATH}`);
   } catch (error) {
-    console.error('Error saving config file:', error.message);
+    // Error saving config
   }
 }
 
@@ -89,17 +88,10 @@ function saveConfig(config) {
  * Initial setup to get client ID, client secret and generate OAuth URL
  */
 async function initialSetup() {
-  console.log('\n=== Zoho API Setup ===\n');
-  console.log('This script will guide you through setting up Zoho API credentials.\n');
-  
   let config = loadConfig();
   
   // Get client ID and secret
   if (!config.clientId) {
-    console.log('1. Go to https://api-console.zoho.com/ and create a Server-based Application');
-    console.log('2. Use the following as your Redirect URI: ' + config.redirectUri);
-    console.log('3. After creating the application, you\'ll get a Client ID and Client Secret\n');
-    
     config.clientId = await prompt('Enter your Client ID: ');
     config.clientSecret = await prompt('Enter your Client Secret: ');
     
@@ -122,18 +114,12 @@ async function initialSetup() {
   
   const oauthUrl = `https://accounts.zoho.com/oauth/v2/auth?scope=${encodeURIComponent(scopes.join(','))}&client_id=${config.clientId}&response_type=code&access_type=offline&redirect_uri=${encodeURIComponent(config.redirectUri)}`;
   
-  console.log('\n=== OAuth Authorization ===\n');
-  console.log('1. Open the following URL in your browser:');
-  console.log(oauthUrl);
-  console.log('2. Log in to Zoho and authorize the application');
-  console.log('3. You\'ll be redirected to a URL that contains a code parameter\n');
-  
   // Open the URL in the default browser
   try {
     const open = (await import('open')).default;
     await open(oauthUrl);
   } catch (error) {
-    console.log('Could not open browser automatically. Please copy and paste the URL above manually.');
+    // Could not open browser
   }
   
   const redirectUrl = await prompt('Enter the full redirect URL you received: ');
@@ -141,12 +127,10 @@ async function initialSetup() {
   // Extract code from URL
   const codeMatch = redirectUrl.match(/code=([^&]+)/);
   if (!codeMatch) {
-    console.error('Could not find authorization code in the URL');
     return;
   }
   
   const authCode = codeMatch[1];
-  console.log(`\nAuthorization code obtained: ${authCode}`);
   
   // Exchange auth code for tokens
   try {
@@ -165,8 +149,6 @@ async function initialSetup() {
     // Calculate expiry time (now + expires_in seconds)
     config.tokenExpiry = Date.now() + (tokenResponse.data.expires_in * 1000);
     
-    console.log('\nAccess token and refresh token obtained successfully!');
-    
     // Ask for webhook URL
     config.webhookUrl = await prompt('Enter your webhook URL (leave empty to skip webhook setup): ');
     
@@ -179,7 +161,7 @@ async function initialSetup() {
     }
     
   } catch (error) {
-    console.error('Error exchanging auth code for tokens:', error.response?.data || error.message);
+    // Error exchanging tokens
   }
 }
 
@@ -190,7 +172,6 @@ async function initialSetup() {
  */
 async function refreshAccessToken(config) {
   if (!config.refreshToken) {
-    console.error('No refresh token found. Please run the initial setup first.');
     return config;
   }
   
@@ -207,12 +188,10 @@ async function refreshAccessToken(config) {
     config.accessToken = response.data.access_token;
     config.tokenExpiry = Date.now() + (response.data.expires_in * 1000);
     
-    console.log('Access token refreshed successfully!');
     saveConfig(config);
     
     return config;
   } catch (error) {
-    console.error('Error refreshing access token:', error.response?.data || error.message);
     return config;
   }
 }
@@ -225,7 +204,6 @@ async function setupWebhook(config) {
   if (!config.webhookUrl) {
     config.webhookUrl = await prompt('Enter your webhook URL: ');
     if (!config.webhookUrl) {
-      console.log('Webhook URL is required to set up notifications.');
       return;
     }
   }
@@ -269,9 +247,6 @@ async function setupWebhook(config) {
       }
     );
     
-    console.log('Webhook notification channel setup successful!');
-    console.log('Channel details:', response.data.watch);
-    
     // Update channel ID in case it changed
     if (response.data.watch && response.data.watch[0]) {
       config.channelId = response.data.watch[0].channel_id || channelId;
@@ -282,7 +257,7 @@ async function setupWebhook(config) {
     }
     
   } catch (error) {
-    console.error('Error setting up webhook notification channel:', error.response?.data || error.message);
+    // Error setting up webhook
   }
 }
 
@@ -310,11 +285,6 @@ async function main() {
       
     case 'help':
     default:
-      console.log('\nZoho Setup Script Usage:');
-      console.log('  node zoho-setup.js setup    - Run initial setup');
-      console.log('  node zoho-setup.js refresh  - Refresh access token');
-      console.log('  node zoho-setup.js webhook  - Setup webhook notification channel');
-      console.log('  node zoho-setup.js help     - Show this help message');
       break;
   }
   

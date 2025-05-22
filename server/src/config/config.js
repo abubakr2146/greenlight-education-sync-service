@@ -44,7 +44,6 @@ function loadZohoConfig() {
     const configData = fs.readFileSync(configPath, 'utf8');
     return JSON.parse(configData);
   } catch (error) {
-    console.error('Error loading Zoho config:', error.message);
     return null;
   }
 }
@@ -56,7 +55,6 @@ function loadAirtableConfig() {
     const configData = fs.readFileSync(configPath, 'utf8');
     return JSON.parse(configData);
   } catch (error) {
-    console.error('Error loading Airtable config:', error.message);
     return null;
   }
 }
@@ -68,7 +66,6 @@ function saveZohoConfig(config) {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     return true;
   } catch (error) {
-    console.error('Error saving Zoho config:', error.message);
     return false;
   }
 }
@@ -91,14 +88,12 @@ async function getFieldMapping() {
     const dynamicMapping = await fetchDynamicFieldMapping();
     
     if (dynamicMapping && Object.keys(dynamicMapping).length > 0) {
-      console.log('📋 Using dynamic field mapping from Zoho Fields table');
       return dynamicMapping;
     }
   } catch (error) {
-    console.log('⚠️  Could not fetch dynamic field mapping, using static mapping');
+    // Failed to fetch dynamic mapping
   }
   
-  console.log('📋 Using static field mapping');
   return FIELD_MAPPING;
 }
 

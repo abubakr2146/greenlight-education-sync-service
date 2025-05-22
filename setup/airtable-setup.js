@@ -62,7 +62,7 @@ function loadConfig() {
       return JSON.parse(configData);
     }
   } catch (error) {
-    console.error('Error reading config file:', error.message);
+    // Error handled
   }
   
   return { ...DEFAULT_CONFIG };
@@ -75,9 +75,8 @@ function loadConfig() {
 function saveConfig(config) {
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-    console.log(`Configuration saved to ${CONFIG_PATH}`);
   } catch (error) {
-    console.error('Error saving config file:', error.message);
+    // Error handled
   }
 }
 
@@ -85,30 +84,15 @@ function saveConfig(config) {
  * Initial setup to get API token, base ID, and table name
  */
 async function initialSetup() {
-  console.log('\\n=== Airtable API Setup ===\\n');
-  console.log('This script will guide you through setting up Airtable API credentials.\\n');
-  
   let config = loadConfig();
   
   // Get API token
   if (!config.apiToken) {
-    console.log('1. Go to https://airtable.com/create/tokens and create a personal access token');
-    console.log('2. Make sure to give it the following scopes:');
-    console.log('   - data.records:read');
-    console.log('   - data.records:write');
-    console.log('   - schema.bases:read');
-    console.log('   - webhook:manage');
-    console.log('3. Copy the token\\n');
-    
     config.apiToken = await prompt('Enter your Airtable API Token: ');
   }
   
   // Get base ID
   if (!config.baseId) {
-    console.log('\\n1. Go to your Airtable base');
-    console.log('2. The base ID is in the URL: https://airtable.com/[BASE_ID]/...');
-    console.log('3. It starts with "app" followed by alphanumeric characters\\n');
-    
     config.baseId = await prompt('Enter your Base ID: ');
   }
   
@@ -137,8 +121,6 @@ async function initialSetup() {
  * @param {Object} config - The configuration object
  */
 async function testConnection(config) {
-  console.log('\\n=== Testing Airtable Connection ===');
-  
   try {
     const response = await axios.get(
       `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}?maxRecords=1`,
@@ -150,16 +132,12 @@ async function testConnection(config) {
       }
     );
     
-    console.log('✅ Connection successful!');
-    console.log(`Found table "${config.tableName}" with ${response.data.records.length > 0 ? 'records' : 'no records'}`);
-    
     if (response.data.records.length > 0) {
-      console.log('Sample record fields:', Object.keys(response.data.records[0].fields));
+      // Sample fields available
     }
     
   } catch (error) {
-    console.error('❌ Connection failed:', error.response?.data || error.message);
-    console.log('Please check your API token, base ID, and table name.');
+    // Connection failed
   }
 }
 
@@ -183,16 +161,12 @@ async function getTableId(config) {
     
     const table = response.data.tables.find(t => t.name === config.tableName);
     if (!table) {
-      console.error(`Table "${config.tableName}" not found in base`);
-      console.log('Available tables:', response.data.tables.map(t => t.name).join(', '));
       return null;
     }
     
-    console.log(`Found table "${config.tableName}" with ID: ${table.id}`);
     return table.id;
     
   } catch (error) {
-    console.error('Error getting table ID:', error.response?.data || error.message);
     return null;
   }
 }
@@ -205,12 +179,9 @@ async function setupWebhook(config) {
   if (!config.webhookUrl) {
     config.webhookUrl = await prompt('Enter your webhook URL: ');
     if (!config.webhookUrl) {
-      console.log('Webhook URL is required to set up notifications.');
       return;
     }
   }
-  
-  console.log('\\n=== Setting up Airtable Webhook ===');
   
   // Get table ID first
   const tableId = await getTableId(config);
@@ -232,8 +203,6 @@ async function setupWebhook(config) {
       }
     };
     
-    console.log('Creating webhook with payload:', JSON.stringify(webhookData, null, 2));
-    
     const response = await axios.post(
       `${config.apiUrl}/bases/${config.baseId}/webhooks`,
       webhookData,
@@ -245,26 +214,13 @@ async function setupWebhook(config) {
       }
     );
     
-    console.log('✅ Webhook created successfully!');
-    console.log('Webhook ID:', response.data.id);
-    console.log('Webhook will notify on changes to table:', config.tableName);
-    console.log('Expiration time:', response.data.expirationTime);
-    
     // Save webhook ID to config
     config.webhookId = response.data.id;
     config.tableId = tableId; // Save table ID for future use
     saveConfig(config);
     
   } catch (error) {
-    console.error('❌ Error creating webhook:', error.response?.data || error.message);
-    
-    if (error.response?.status === 422) {
-      console.log('\\nTip: Make sure your personal access token has the following scopes:');
-      console.log('- data.records:read');
-      console.log('- data.records:write'); 
-      console.log('- schema.bases:read');
-      console.log('- webhook:manage');
-    }
+    // Error creating webhook
   }
 }
 
@@ -274,7 +230,6 @@ async function setupWebhook(config) {
  */
 async function deleteWebhook(config) {
   if (!config.webhookId) {
-    console.log('No webhook ID found in config.');
     return;
   }
   
@@ -289,12 +244,11 @@ async function deleteWebhook(config) {
       }
     );
     
-    console.log('✅ Webhook deleted successfully!');
     config.webhookId = '';
     saveConfig(config);
     
   } catch (error) {
-    console.error('❌ Error deleting webhook:', error.response?.data || error.message);
+    // Error deleting webhook
   }
 }
 
@@ -326,12 +280,6 @@ async function main() {
       
     case 'help':
     default:
-      console.log('\\nAirtable Setup Script Usage:');
-      console.log('  node airtable-setup.js setup         - Run initial setup');
-      console.log('  node airtable-setup.js test          - Test connection to Airtable');
-      console.log('  node airtable-setup.js webhook       - Setup webhook notification');
-      console.log('  node airtable-setup.js delete-webhook - Delete existing webhook');
-      console.log('  node airtable-setup.js help          - Show this help message');
       break;
   }
   

@@ -16,7 +16,6 @@ async function getFieldNames(config, fieldIds) {
     
     const table = response.data.tables.find(t => t.id === config.tableId || t.name === config.tableName);
     if (!table) {
-      console.log('Table not found in metadata');
       return {};
     }
     
@@ -32,7 +31,6 @@ async function getFieldNames(config, fieldIds) {
     
     return result;
   } catch (error) {
-    console.error('Error getting field names:', error.response?.data || error.message);
     return {};
   }
 }
@@ -52,14 +50,12 @@ async function getAirtableFieldId(config, fieldName) {
     
     const table = response.data.tables.find(t => t.id === config.tableId || t.name === config.tableName);
     if (!table) {
-      console.log('Table not found in metadata');
       return null;
     }
     
     const field = table.fields.find(f => f.name === fieldName);
     return field ? field.id : null;
   } catch (error) {
-    console.error('Error getting Airtable field ID:', error.response?.data || error.message);
     return null;
   }
 }
@@ -69,7 +65,6 @@ async function updateAirtableRecord(recordId, fieldUpdates, config = null) {
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
-      console.error('Failed to load Airtable config');
       return null;
     }
   }
@@ -88,10 +83,8 @@ async function updateAirtableRecord(recordId, fieldUpdates, config = null) {
       }
     );
     
-    console.log('✅ Airtable record updated successfully');
     return response.data;
   } catch (error) {
-    console.error('❌ Error updating Airtable record:', error.response?.data || error.message);
     return null;
   }
 }
@@ -101,7 +94,6 @@ async function createAirtableRecord(recordData, config = null) {
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
-      console.error('Failed to load Airtable config');
       return null;
     }
   }
@@ -118,10 +110,8 @@ async function createAirtableRecord(recordData, config = null) {
       }
     );
     
-    console.log(`✅ Airtable record created successfully: ${response.data.id}`);
     return response.data;
   } catch (error) {
-    console.error('❌ Error creating Airtable record:', error.response?.data || error.message);
     return null;
   }
 }
@@ -131,13 +121,10 @@ async function findAirtableRecordByZohoId(zohoLeadId, config = null) {
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
-      console.error('Failed to load Airtable config');
       return null;
     }
   }
 
-  console.log(`🔍 Looking for Airtable record with Zoho CRM ID: ${zohoLeadId}`);
-  
   try {
     // Search for records where "Zoho CRM ID" field equals the Zoho lead ID
     const response = await axios.get(
@@ -155,26 +142,20 @@ async function findAirtableRecordByZohoId(zohoLeadId, config = null) {
     
     if (response.data.records && response.data.records.length > 0) {
       const recordId = response.data.records[0].id;
-      console.log(`✅ Found Airtable record: ${recordId}`);
       return recordId;
     } else {
-      console.log(`❌ No Airtable record found with Zoho CRM ID: ${zohoLeadId}`);
       return null;
     }
   } catch (error) {
-    console.error('Error finding Airtable record:', error.response?.data || error.message);
     return null;
   }
 }
 
 // Find Zoho lead ID by Airtable record ID using the "Zoho CRM ID" field
 async function findZohoLeadByAirtableId(airtableRecordId, config = null) {
-  console.log(`🔍 Looking for Zoho lead ID in Airtable record: ${airtableRecordId}`);
-  
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
-      console.error('Failed to load Airtable config');
       return null;
     }
   }
@@ -193,14 +174,11 @@ async function findZohoLeadByAirtableId(airtableRecordId, config = null) {
     
     const zohoId = response.data.fields[FIELD_MAPPING.ZOHO_ID.airtable];
     if (zohoId) {
-      console.log(`✅ Found Zoho lead ID: ${zohoId}`);
       return zohoId;
     } else {
-      console.log(`❌ No Zoho CRM ID found in Airtable record: ${airtableRecordId}`);
       return null;
     }
   } catch (error) {
-    console.error('Error finding Zoho lead ID:', error.response?.data || error.message);
     return null;
   }
 }
@@ -212,8 +190,6 @@ async function fetchWebhookPayloads(config, webhookId, maxPayloads = 200) {
     let cursor = null;
     let iterations = 0;
     const maxIterations = Math.ceil(maxPayloads / 50); // Prevent infinite loops
-    
-    console.log(`📡 Fetching webhook payloads (max: ${maxPayloads})...`);
     
     do {
       const params = {};
@@ -241,8 +217,6 @@ async function fetchWebhookPayloads(config, webhookId, maxPayloads = 200) {
       cursor = response.data.cursor;
       iterations++;
       
-      console.log(`   Batch ${iterations}: ${payloads.length} payloads (total: ${allPayloads.length})`);
-      
       // Stop if we have enough payloads or no more cursor
       if (allPayloads.length >= maxPayloads || !cursor || payloads.length === 0) {
         break;
@@ -253,15 +227,8 @@ async function fetchWebhookPayloads(config, webhookId, maxPayloads = 200) {
     // Sort by timestamp descending to get newest payloads first
     allPayloads.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
-    console.log(`✅ Retrieved ${allPayloads.length} total payloads`);
-    if (allPayloads.length > 0) {
-      console.log(`   Newest: ${allPayloads[0].timestamp}`);
-      console.log(`   Oldest: ${allPayloads[allPayloads.length - 1].timestamp}`);
-    }
-    
     return allPayloads;
   } catch (error) {
-    console.error('Error fetching webhook payloads:', error.response?.data || error.message);
     return [];
   }
 }
@@ -299,20 +266,13 @@ function getChangedFieldsFromRecord(current, previous) {
 
 // Process changed tables data
 async function processChangedTables(changedTablesById, config) {
-  console.log('\n=== Changed Tables ===');
-  
   for (const tableId of Object.keys(changedTablesById)) {
     const table = changedTablesById[tableId];
-    console.log(`Table ID: ${tableId}`);
-    console.log(`Table Name: ${table.name || 'Unknown'}`);
     
     // Process changed records
     if (table.changedRecordsById) {
-      console.log('\n=== Changed Records ===');
-      
       for (const recordId of Object.keys(table.changedRecordsById)) {
         const record = table.changedRecordsById[recordId];
-        console.log(`Record ID: ${recordId}`);
         
         // Extract field data from the record structure
         const currentFields = extractFieldData(record.current);
@@ -320,12 +280,10 @@ async function processChangedTables(changedTablesById, config) {
         
         // Identify which fields actually changed
         const changedFieldIds = getChangedFieldsFromRecord(record.current, record.previous);
-        console.log('Changed Field IDs:', changedFieldIds);
         
         if (changedFieldIds.length > 0) {
           // Get field names for the changed fields
           const fieldNames = await getFieldNames(config, changedFieldIds);
-          console.log('Changed Field Names:');
           
           const changedFieldsInfo = [];
           
@@ -334,13 +292,8 @@ async function processChangedTables(changedTablesById, config) {
             const currentValue = currentFields[fieldId];
             const previousValue = previousFields[fieldId];
             
-            console.log(`  ${fieldName} (${fieldId}):`);
-            console.log(`    From: ${JSON.stringify(previousValue)}`);
-            console.log(`    To: ${JSON.stringify(currentValue)}`);
-            
             // Check if this field should be ignored
             if (shouldIgnoreField(fieldName, 'airtable')) {
-              console.log(`⏭️  Skipping ignored field: ${fieldName}`);
               continue;
             }
             
@@ -359,45 +312,23 @@ async function processChangedTables(changedTablesById, config) {
             allCurrentFields: currentFields
           };
         }
-        
-        console.log('All Current Fields:', currentFields);
-        if (record.previous) {
-          console.log('All Previous Values:', record.previous);
-        }
-        console.log('---');
       }
     }
     
     // Process created records
     if (table.createdRecordsById) {
-      console.log('\n=== Created Records ===');
-      
       for (const recordId of Object.keys(table.createdRecordsById)) {
         const record = table.createdRecordsById[recordId];
-        console.log(`Record ID: ${recordId}`);
         
         const currentFields = extractFieldData(record.current);
         const allFieldIds = Object.keys(currentFields);
-        if (allFieldIds.length > 0) {
-          const fieldNames = await getFieldNames(config, allFieldIds);
-          console.log('Field Values:');
-          for (const fieldId of allFieldIds) {
-            const fieldName = fieldNames[fieldId] || fieldId;
-            const value = currentFields[fieldId];
-            console.log(`  ${fieldName} (${fieldId}): ${JSON.stringify(value)}`);
-          }
-        }
-        
-        console.log('All Values:', currentFields);
-        console.log('---');
       }
     }
     
     // Process deleted records
     if (table.destroyedRecordIds) {
-      console.log('\n=== Deleted Records ===');
       for (const recordId of table.destroyedRecordIds) {
-        console.log(`Deleted Record ID: ${recordId}`);
+        // Record deleted
       }
     }
   }
@@ -410,13 +341,10 @@ async function fetchDynamicFieldMapping(config = null) {
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
-      console.error('Failed to load Airtable config');
       return null;
     }
   }
 
-  console.log('📋 Fetching dynamic field mapping from Zoho Fields table...');
-  
   try {
     let allRecords = [];
     let offset = null;
@@ -425,7 +353,6 @@ async function fetchDynamicFieldMapping(config = null) {
     // Fetch all records with pagination
     do {
       pageCount++;
-      console.log(`   Fetching page ${pageCount}...`);
       
       const params = {};
       if (offset) {
@@ -447,12 +374,9 @@ async function fetchDynamicFieldMapping(config = null) {
       allRecords.push(...pageRecords);
       offset = response.data.offset;
       
-      console.log(`   Page ${pageCount}: ${pageRecords.length} records (total so far: ${allRecords.length})`);
-      
     } while (offset);
     
     const fieldMapping = {};
-    console.log(`✅ Found ${allRecords.length} total field mapping records`);
     
     for (const record of allRecords) {
       const fields = record.fields;
@@ -463,38 +387,23 @@ async function fetchDynamicFieldMapping(config = null) {
       // Try multiple field sources for the Airtable field ID
       let airtableFieldId = fields['Airtable Field ID'] || fields['Field ID'] || fields['Airtable Field'];
       
-      console.log(`   Record ${record.id}:`);
-      console.log(`     - All fields: ${JSON.stringify(Object.keys(fields))}`);
-      console.log(`     - Zoho field: ${zohoFieldName}`);
-      console.log(`     - Airtable Field ID: ${fields['Airtable Field ID']}`);
-      console.log(`     - Field ID: ${fields['Field ID']}`);
-      console.log(`     - Airtable Field: ${fields['Airtable Field']}`);
-      console.log(`     - Final airtable field: ${airtableFieldId}`);
-      
       if (zohoFieldName && airtableFieldId) {
         // Handle both string and array values for airtableFieldId
         const finalAirtableFieldId = Array.isArray(airtableFieldId) ? airtableFieldId[0] : airtableFieldId;
         
         // Only use if it looks like a field ID (starts with "fld")
         if (typeof finalAirtableFieldId === 'string' && finalAirtableFieldId.startsWith('fld')) {
-          console.log(`   ✅ Mapping: ${zohoFieldName} → ${finalAirtableFieldId}`);
-          
           fieldMapping[zohoFieldName] = {
             zoho: zohoFieldName,
             airtable: finalAirtableFieldId,
             recordId: record.id
           };
-        } else {
-          console.log(`   ❌ Skipping record - airtable field doesn't look like field ID: ${finalAirtableFieldId}`);
         }
-      } else {
-        console.log(`   ❌ Skipping record - missing data (Zoho: ${zohoFieldName}, Airtable: ${airtableFieldId})`);
       }
     }
     
     return fieldMapping;
   } catch (error) {
-    console.error('Error fetching dynamic field mapping:', error.response?.data || error.message);
     return null;
   }
 }

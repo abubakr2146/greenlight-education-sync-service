@@ -32,31 +32,23 @@ app.get('/cache-status', (req, res) => {
 async function startServer() {
   try {
     // Initialize field mapping cache before starting server
-    console.log('🔧 Starting server initialization...');
     await fieldMappingCache.initialize();
     
     app.listen(PORT, () => {
-      console.log(`✅ Server running on http://localhost:${PORT}`);
-      console.log(`📡 Zoho webhook endpoint: http://localhost:${PORT}/leads-notif`);
-      console.log(`📡 Airtable webhook endpoint: http://localhost:${PORT}/airtable-notif`);
-      console.log(`🏥 Health check: http://localhost:${PORT}/health`);
-      console.log(`📊 Cache status: http://localhost:${PORT}/cache-status`);
+      // Server started
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 }
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down server...');
   fieldMappingCache.destroy();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.log('\n🛑 Shutting down server...');
   fieldMappingCache.destroy();
   process.exit(0);
 });
