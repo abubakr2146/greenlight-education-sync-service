@@ -23,7 +23,7 @@ async function main() {
   try {
     // Initialize field mapping cache
     console.log('🔧 Initializing field mapping cache...');
-    await fieldMappingCache.initialize();
+    await fieldMappingCache.initialize('Leads');
     
     // Wait a moment for cache to populate
     await new Promise(resolve => setTimeout(resolve, 2000));

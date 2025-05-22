@@ -3,8 +3,8 @@
   "clientSecret": "a9030b4a3f69392969a40fe533a27250ca326e7b62",
   "redirectUri": "http://localhost:3000/oauth/callback",
   "refreshToken": "1000.5b416d40656ce9507f9c1fc5cde76443.5ac94ab999e4eaf210077e574413d354",
-  "accessToken": "1000.e6267c77ce00be2879e79ab2379ac5d7.1b25e40e6887c32da68f4f4a78c5336d",
-  "tokenExpiry": 1747913341668,
+  "accessToken": "1000.1a4a8ad945aa0504a26ee7c2b9997925.fa6db69c63397f9744302ed218397250",
+  "tokenExpiry": 1747929154653,
   "modules": [
     "Leads"
   ],

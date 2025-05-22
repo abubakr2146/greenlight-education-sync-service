@@ -14,6 +14,10 @@
     "sync:bulk:verbose": "node bulkSync.js --verbose",
     "sync:daemon": "node syncDaemon.js",
     "sync:daemon:verbose": "node syncDaemon.js --verbose",
+    "export:mappings": "node exportFieldMappings.js",
+    "export:mappings:preview": "node exportFieldMappings.js --preview",
+    "export:mappings:leads": "node exportFieldMappings.js --module Leads",
+    "export:mappings:leads:preview": "node exportFieldMappings.js --module Leads --preview",
     "start": "node app.js"
   },
   "keywords": [],

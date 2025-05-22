@@ -8,14 +8,16 @@ class FieldMappingCache {
     this.refreshInterval = 5 * 60 * 1000; // 5 minutes in milliseconds
     this.intervalId = null;
     this.isInitializing = false;
+    this.module = null; // Track which module we're caching for
   }
 
-  async initialize() {
+  async initialize(module = null) {
     if (this.isInitializing) {
       return;
     }
 
     this.isInitializing = true;
+    this.module = module;
     
     try {
       await this.refreshCache();
@@ -39,7 +41,7 @@ class FieldMappingCache {
         return;
       }
 
-      const fieldMapping = await fetchDynamicFieldMapping(config);
+      const fieldMapping = await fetchDynamicFieldMapping(config, this.module);
       if (fieldMapping) {
         this.cache = fieldMapping;
         this.lastUpdated = new Date();
@@ -66,7 +68,8 @@ class FieldMappingCache {
       initialized: this.cache !== null,
       lastUpdated: this.lastUpdated,
       mappingCount: this.cache ? Object.keys(this.cache).length : 0,
-      refreshInterval: this.refreshInterval
+      refreshInterval: this.refreshInterval,
+      module: this.module
     };
   }
 

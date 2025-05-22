@@ -52,7 +52,7 @@ class BulkSync {
 
       // Initialize field mapping cache
       console.log('🔧 Initializing field mapping cache...');
-      await fieldMappingCache.initialize();
+      await fieldMappingCache.initialize('Leads');
       await new Promise(resolve => setTimeout(resolve, 3000));
       
       const fieldStatus = fieldMappingCache.getStatus();

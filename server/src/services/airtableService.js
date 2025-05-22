@@ -186,7 +186,7 @@ async function findZohoLeadByAirtableId(airtableRecordId, config = null) {
 
 
 // Fetch dynamic field mapping from Zoho Fields table
-async function fetchDynamicFieldMapping(config = null) {
+async function fetchDynamicFieldMapping(config = null, module = null) {
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
@@ -225,10 +225,31 @@ async function fetchDynamicFieldMapping(config = null) {
       
     } while (offset);
     
+    // If module is specified, get the module record ID by api_name
+    let moduleRecordId = null;
+    if (module) {
+      moduleRecordId = await getModuleRecordIdByApiName(config, module);
+      if (!moduleRecordId) {
+        // No module found with this api_name, return empty mapping
+        return {};
+      }
+    }
+    
     const fieldMapping = {};
     
     for (const record of allRecords) {
       const fields = record.fields;
+      
+      // Check if module filtering is needed
+      if (module && moduleRecordId) {
+        const recordModules = fields['Module'] || [];
+        const recordModuleIds = Array.isArray(recordModules) ? recordModules : [recordModules];
+        
+        // Skip if this record doesn't match the specified module record ID
+        if (!recordModuleIds.includes(moduleRecordId)) {
+          continue;
+        }
+      }
       
       // Use correct field names from your Zoho Fields table
       const zohoFieldName = fields['Field Name']; // Zoho field name
@@ -252,6 +273,36 @@ async function fetchDynamicFieldMapping(config = null) {
     }
     
     return fieldMapping;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Helper function to get module record ID by api_name
+async function getModuleRecordIdByApiName(config, apiName) {
+  try {
+    const moduleTableId = 'tbl2HlEPyESvXUXHN'; // Zoho Modules table ID
+    
+    const response = await axios.get(
+      `${config.apiUrl}/${config.baseId}/${moduleTableId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${config.apiToken}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          filterByFormula: `{api_name} = "${apiName}"`, // Search by api_name field
+          fields: ['api_name'] // Only fetch the api_name field
+        }
+      }
+    );
+    
+    const records = response.data.records || [];
+    if (records.length > 0) {
+      return records[0].id; // Return the record ID
+    }
+    
+    return null;
   } catch (error) {
     return null;
   }
@@ -441,5 +492,6 @@ module.exports = {
   getRecordsModifiedSince,
   getAllRecordsForSync,
   getRecordById,
-  getFieldIdToNameMapping
+  getFieldIdToNameMapping,
+  getModuleRecordIdByApiName
 };

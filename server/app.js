@@ -25,7 +25,7 @@ app.get('/cache-status', (req, res) => {
 async function startServer() {
   try {
     // Initialize field mapping cache before starting server
-    await fieldMappingCache.initialize();
+    await fieldMappingCache.initialize('Leads');
     
     app.listen(PORT, () => {
       // Server started

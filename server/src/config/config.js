@@ -82,10 +82,10 @@ function filterIgnoredFields(fieldNames, system) {
 }
 
 // Get dynamic field mapping (or fall back to static mapping)
-async function getFieldMapping() {
+async function getFieldMapping(module = 'Leads') {
   try {
     const { fetchDynamicFieldMapping } = require('../services/airtableService');
-    const dynamicMapping = await fetchDynamicFieldMapping();
+    const dynamicMapping = await fetchDynamicFieldMapping(null, module);
     
     if (dynamicMapping && Object.keys(dynamicMapping).length > 0) {
       return dynamicMapping;

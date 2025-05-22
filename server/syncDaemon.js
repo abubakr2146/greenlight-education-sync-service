@@ -39,7 +39,7 @@ class SyncDaemon {
       
       // Initialize field mapping cache
       console.log('🔧 Initializing field mapping cache...');
-      await fieldMappingCache.initialize();
+      await fieldMappingCache.initialize('Leads');
       
       // Wait for cache to populate
       await this.waitForCache();
