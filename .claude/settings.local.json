@@ -12,7 +12,8 @@
       "Bash(grep:*)",
       "Bash(rg:*)",
       "Bash(timeout:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

@@ -182,10 +182,157 @@ function logLeadDetails(lead) {
   // Lead details logged
 }
 
+// Fetch leads modified since a specific timestamp
+async function getLeadsModifiedSince(sinceTimestamp, config = null) {
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    // Check if token needs refresh
+    if (Date.now() >= config.tokenExpiry) {
+      const refreshed = await refreshZohoToken(config);
+      if (!refreshed) {
+        return null;
+      }
+    }
+
+    // Format timestamp for Zoho API (ISO format)
+    const sinceDate = new Date(sinceTimestamp).toISOString();
+    
+    const response = await axios.get(
+      `${config.apiDomain}/crm/v2/Leads`,
+      {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          'sort_by': 'Modified_Time',
+          'sort_order': 'desc',
+          'page': 1,
+          'per_page': 200, // Max records per page
+          'fields': 'id,Modified_Time', // We'll fetch full details separately
+          'criteria': `(Modified_Time:greater_than:${sinceDate})`
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    // If token is invalid, try refreshing once
+    if (error.response?.data?.code === 'INVALID_TOKEN') {
+      const refreshed = await refreshZohoToken(config);
+      if (refreshed) {
+        // Retry the request with new token
+        try {
+          const sinceDate = new Date(sinceTimestamp).toISOString();
+          const response = await axios.get(
+            `${config.apiDomain}/crm/v2/Leads`,
+            {
+              headers: {
+                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              params: {
+                'sort_by': 'Modified_Time',
+                'sort_order': 'desc',
+                'page': 1,
+                'per_page': 200,
+                'fields': 'id,Modified_Time',
+                'criteria': `(Modified_Time:greater_than:${sinceDate})`
+              }
+            }
+          );
+          return response.data;
+        } catch (retryError) {
+          return null;
+        }
+      }
+    }
+    
+    return null;
+  }
+}
+
+// Fetch all fields for multiple leads efficiently
+async function getMultipleLeadDetails(leadIds, config = null) {
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  if (!leadIds || leadIds.length === 0) {
+    return { data: [] };
+  }
+
+  try {
+    // Check if token needs refresh
+    if (Date.now() >= config.tokenExpiry) {
+      const refreshed = await refreshZohoToken(config);
+      if (!refreshed) {
+        return null;
+      }
+    }
+
+    // Zoho allows up to 100 IDs per request
+    const idsString = leadIds.slice(0, 100).join(',');
+    
+    const response = await axios.get(
+      `${config.apiDomain}/crm/v2/Leads`,
+      {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          'ids': idsString
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    // If token is invalid, try refreshing once
+    if (error.response?.data?.code === 'INVALID_TOKEN') {
+      const refreshed = await refreshZohoToken(config);
+      if (refreshed) {
+        try {
+          const idsString = leadIds.slice(0, 100).join(',');
+          const response = await axios.get(
+            `${config.apiDomain}/crm/v2/Leads`,
+            {
+              headers: {
+                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              params: {
+                'ids': idsString
+              }
+            }
+          );
+          return response.data;
+        } catch (retryError) {
+          return null;
+        }
+      }
+    }
+    
+    return null;
+  }
+}
+
 module.exports = {
   refreshZohoToken,
   getLeadDetails,
   updateZohoLead,
   getChangedFields,
-  logLeadDetails
+  logLeadDetails,
+  getLeadsModifiedSince,
+  getMultipleLeadDetails
 };

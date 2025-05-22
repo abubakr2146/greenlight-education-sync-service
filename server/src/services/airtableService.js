@@ -408,6 +408,179 @@ async function fetchDynamicFieldMapping(config = null) {
   }
 }
 
+// Fetch Airtable records modified since a specific timestamp
+async function getRecordsModifiedSince(sinceTimestamp, config = null) {
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    let allRecords = [];
+    let offset = null;
+    
+    // Format timestamp for Airtable API (ISO format)
+    const sinceDate = new Date(sinceTimestamp).toISOString();
+    
+    do {
+      const params = {
+        sort: [{ field: 'Last Modified Time', direction: 'desc' }],
+        pageSize: 100, // Max records per page
+        filterByFormula: `IS_AFTER({Last Modified Time}, '${sinceDate}')`
+      };
+      
+      if (offset) {
+        params.offset = offset;
+      }
+
+      const response = await axios.get(
+        `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${config.apiToken}`,
+            'Content-Type': 'application/json'
+          },
+          params: params
+        }
+      );
+      
+      const pageRecords = response.data.records || [];
+      allRecords.push(...pageRecords);
+      
+      // Update offset for next iteration
+      offset = response.data.offset;
+      
+      // Stop if no more records or no offset
+      if (!offset || pageRecords.length === 0) {
+        break;
+      }
+      
+    } while (offset);
+    
+    return { records: allRecords };
+  } catch (error) {
+    return null;
+  }
+}
+
+// Get all records with their Zoho CRM IDs and Last Modified Times for comparison
+async function getAllRecordsForSync(config = null) {
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    let allRecords = [];
+    let offset = null;
+    
+    do {
+      const params = {
+        fields: ['Zoho CRM ID', 'Last Modified Time'],
+        pageSize: 100,
+        sort: [{ field: 'Last Modified Time', direction: 'desc' }]
+      };
+      
+      if (offset) {
+        params.offset = offset;
+      }
+
+      const response = await axios.get(
+        `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${config.apiToken}`,
+            'Content-Type': 'application/json'
+          },
+          params: params
+        }
+      );
+      
+      const pageRecords = response.data.records || [];
+      allRecords.push(...pageRecords);
+      
+      // Update offset for next iteration
+      offset = response.data.offset;
+      
+      // Stop if no more records or no offset
+      if (!offset || pageRecords.length === 0) {
+        break;
+      }
+      
+    } while (offset);
+    
+    return { records: allRecords };
+  } catch (error) {
+    return null;
+  }
+}
+
+// Get full record details for a specific record by ID
+async function getRecordById(recordId, config = null) {
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    const response = await axios.get(
+      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}/${recordId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${config.apiToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Get complete field ID to name mapping for the table
+async function getFieldIdToNameMapping(config = null) {
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    const response = await axios.get(
+      `${config.apiUrl}/meta/bases/${config.baseId}/tables`,
+      {
+        headers: {
+          'Authorization': `Bearer ${config.apiToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    const table = response.data.tables.find(t => t.id === config.tableId || t.name === config.tableName);
+    if (!table) {
+      return {};
+    }
+    
+    const fieldMapping = {};
+    table.fields.forEach(field => {
+      fieldMapping[field.id] = field.name;
+    });
+    
+    return fieldMapping;
+  } catch (error) {
+    return {};
+  }
+}
+
 module.exports = {
   getFieldNames,
   getAirtableFieldId,
@@ -419,5 +592,9 @@ module.exports = {
   extractFieldData,
   getChangedFieldsFromRecord,
   processChangedTables,
-  fetchDynamicFieldMapping
+  fetchDynamicFieldMapping,
+  getRecordsModifiedSince,
+  getAllRecordsForSync,
+  getRecordById,
+  getFieldIdToNameMapping
 };

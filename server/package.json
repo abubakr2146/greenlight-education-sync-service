@@ -4,7 +4,17 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node testSync.js",
+    "test:loops": "node testLoopPrevention.js",
+    "sync": "node syncManager.js",
+    "sync:status": "node syncManager.js status",
+    "sync:full": "node syncManager.js --full",
+    "sync:bulk": "node bulkSync.js",
+    "sync:bulk:preview": "node bulkSync.js --dry-run",
+    "sync:bulk:verbose": "node bulkSync.js --verbose",
+    "sync:daemon": "node syncDaemon.js",
+    "sync:daemon:verbose": "node syncDaemon.js --verbose",
+    "start": "node app.js"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +22,7 @@
   "dependencies": {
     "axios": "^1.9.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "node-cron": "^3.0.3"
   }
 }
