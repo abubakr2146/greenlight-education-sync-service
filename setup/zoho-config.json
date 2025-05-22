@@ -1,0 +1,14 @@
+{
+  "clientId": "1000.5QZ1KE2WHYQ83QVBXK20LCT1K9WAJV",
+  "clientSecret": "a9030b4a3f69392969a40fe533a27250ca326e7b62",
+  "redirectUri": "http://localhost:3000/oauth/callback",
+  "refreshToken": "1000.5b416d40656ce9507f9c1fc5cde76443.5ac94ab999e4eaf210077e574413d354",
+  "accessToken": "1000.7b115575b55d9e95ee95c30afc4e5dc6.f9c2964fc6b693982005fc39728b8343",
+  "tokenExpiry": 1747897370520,
+  "modules": [
+    "Leads"
+  ],
+  "webhookUrl": "https://0e6f-2407-aa80-314-ffe3-f5e7-ffef-d2c4-9d05.ngrok-free.app/leads-notif",
+  "apiDomain": "https://www.zohoapis.com",
+  "channelId": 1747893770521
+}
