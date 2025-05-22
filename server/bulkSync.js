@@ -20,11 +20,11 @@ const {
   findAirtableRecordByZohoId,
   getFieldIdToNameMapping 
 } = require('./src/services/airtableService');
+const { createAirtableRecordFromZohoLead } = require('./src/services/syncService');
 const { 
-  createAirtableRecordFromZohoLead, 
-  syncFieldFromZohoToAirtable,
-  syncFieldFromAirtableToZoho 
-} = require('./src/services/syncService');
+  syncZohoToAirtable, 
+  syncAirtableToZoho 
+} = require('./src/services/syncExecutionService');
 const fieldMappingCache = require('./src/utils/fieldMappingCache');
 
 class BulkSync {
@@ -411,7 +411,11 @@ class BulkSync {
         const ageMinutes = isNaN(syncItem.timeDiff) ? 'unknown' : Math.round(syncItem.timeDiff / 60000);
         console.log(`[${processed}/${total}] Syncing Zoho lead ${syncItem.zoho.id} → Airtable (Zoho ${ageMinutes}min newer)`);
         
-        const success = await this.syncZohoToAirtable(syncItem.zoho, syncItem.airtable);
+        const success = await syncZohoToAirtable(syncItem.zoho, { 
+          compareValues: false, 
+          verbose: this.verbose,
+          createMissing: false 
+        });
         if (success) {
           this.stats.zohoToAirtable++;
         } else {
@@ -430,7 +434,11 @@ class BulkSync {
         const ageMinutes = isNaN(syncItem.timeDiff) ? 'unknown' : Math.round(syncItem.timeDiff / 60000);
         console.log(`[${processed}/${total}] Syncing Airtable record ${syncItem.airtable.id} → Zoho ${syncItem.zoho.id} (Airtable ${ageMinutes}min newer)`);
         
-        const success = await this.syncAirtableToZoho(syncItem.airtable, syncItem.zoho);
+        const success = await syncAirtableToZoho(syncItem.airtable, { 
+          compareValues: false, 
+          verbose: this.verbose,
+          createMissing: false 
+        });
         if (success) {
           this.stats.airtableToZoho++;
         } else {
@@ -447,106 +455,6 @@ class BulkSync {
     }
   }
 
-  async syncZohoToAirtable(zohoLead, airtableRecord) {
-    const fieldMapping = fieldMappingCache.getFieldMapping();
-    if (!fieldMapping) {
-      return false;
-    }
-
-    const syncPromises = [];
-    
-    // Sync all mapped fields
-    for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
-      if (zohoLead.data[zohoField] !== undefined && !this.shouldIgnoreField(zohoField)) {
-        syncPromises.push(
-          syncFieldFromZohoToAirtable(zohoLead.id, zohoField, zohoLead.data[zohoField], mapping)
-        );
-      }
-    }
-
-    const results = await Promise.allSettled(syncPromises);
-    const successful = results.filter(r => r.status === 'fulfilled').length;
-    
-    return successful > 0;
-  }
-
-  async syncAirtableToZoho(airtableRecord, zohoLead) {
-    const fieldMapping = fieldMappingCache.getFieldMapping();
-    if (!fieldMapping) {
-      console.log(`❌ No field mapping available for sync`);
-      return false;
-    }
-
-    // Get field ID to name mapping to resolve field IDs to actual field names
-    const fieldIdToName = await getFieldIdToNameMapping();
-    
-    const syncPromises = [];
-    let fieldsToSync = 0;
-    let fieldsChecked = 0;
-    let fieldsIgnored = 0;
-    let fieldsUndefined = 0;
-    
-    if (this.verbose) {
-      console.log(`   🔍 Available Airtable fields: ${Object.keys(airtableRecord.data.fields).slice(0, 10).join(', ')}...`);
-      console.log(`   🗺️  Field mappings to check: ${Object.keys(fieldMapping).length}`);
-    }
-    
-    // Sync all mapped fields
-    for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
-      fieldsChecked++;
-      const airtableFieldId = mapping.airtable;
-      
-      // Resolve field ID to field name
-      const airtableFieldName = fieldIdToName[airtableFieldId] || airtableFieldId;
-      const fieldValue = airtableRecord.data.fields[airtableFieldName];
-      
-      if (this.shouldIgnoreField(zohoField)) {
-        fieldsIgnored++;
-        continue;
-      }
-      
-      if (fieldValue === undefined) {
-        fieldsUndefined++;
-        if (this.verbose && fieldsChecked <= 5) {
-          console.log(`   ⚪ ${zohoField} (${airtableFieldName}): undefined`);
-        }
-        continue;
-      }
-      
-      if (this.verbose && fieldsToSync < 5) {
-        console.log(`   ✅ ${zohoField} (${airtableFieldName}): "${fieldValue}"`);
-      }
-      
-      fieldsToSync++;
-      syncPromises.push(
-        syncFieldFromAirtableToZoho(airtableRecord.id, zohoField, fieldValue, mapping)
-          .catch(error => {
-            if (this.verbose) {
-              console.log(`   ❌ Failed to sync field ${zohoField}: ${error.message}`);
-            }
-            throw error;
-          })
-      );
-    }
-
-    if (fieldsToSync === 0) {
-      if (this.verbose) {
-        console.log(`   ⚠️  No fields to sync for record ${airtableRecord.id}`);
-        console.log(`   📊 Summary: ${fieldsChecked} checked, ${fieldsIgnored} ignored, ${fieldsUndefined} undefined, ${fieldsToSync} to sync`);
-      }
-      return false;
-    }
-
-    const results = await Promise.allSettled(syncPromises);
-    const successful = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.filter(r => r.status === 'rejected').length;
-    
-    if (this.verbose) {
-      console.log(`   📊 Field sync results: ${successful} successful, ${failed} failed out of ${fieldsToSync} total`);
-    }
-    
-    return successful > 0;
-  }
 
   shouldIgnoreField(fieldName) {
     const ignoredFields = [
