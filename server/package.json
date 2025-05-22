@@ -4,8 +4,6 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "test": "node testSync.js",
-    "test:loops": "node testLoopPrevention.js",
     "sync": "node syncManager.js",
     "sync:status": "node syncManager.js status",
     "sync:full": "node syncManager.js --full",
