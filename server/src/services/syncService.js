@@ -1,4 +1,5 @@
-const { FIELD_MAPPING, getFieldMapping } = require('../config/config');
+const { FIELD_MAPPING } = require('../config/config');
+const fieldMappingCache = require('../utils/fieldMappingCache');
 const { shouldSkipSync } = require('../utils/syncTracker');
 const { getLeadDetails, updateZohoLead } = require('./zohoService');
 const { 
@@ -14,9 +15,18 @@ const SYNC_DIRECTIONS = {
   AIRTABLE_TO_ZOHO: 'airtable_to_zoho'
 };
 
-// Helper function to get field mapping for a specific field
-async function getFieldMappingFor(zohoFieldName) {
-  const fieldMapping = await getFieldMapping();
+// Helper function to get field mapping for a specific field using cache
+function getFieldMappingFor(zohoFieldName) {
+  const fieldMapping = fieldMappingCache.getFieldMapping();
+  
+  if (!fieldMapping) {
+    console.warn(`⚠️  Field mapping cache not ready, fallback to static mapping for ${zohoFieldName}`);
+    // Fallback to static mapping
+    if (FIELD_MAPPING[zohoFieldName]) {
+      return FIELD_MAPPING[zohoFieldName];
+    }
+    return null;
+  }
   
   // Handle both static (FIELD_MAPPING) and dynamic mapping formats
   if (fieldMapping[zohoFieldName]) {
@@ -33,9 +43,14 @@ async function getFieldMappingFor(zohoFieldName) {
   return null;
 }
 
-// Helper function to get Zoho CRM ID field mapping
-async function getZohoCrmIdMapping() {
-  const fieldMapping = await getFieldMapping();
+// Helper function to get Zoho CRM ID field mapping using cache
+function getZohoCrmIdMapping() {
+  const fieldMapping = fieldMappingCache.getFieldMapping();
+  
+  if (!fieldMapping) {
+    console.warn(`⚠️  Field mapping cache not ready, fallback to static mapping for Zoho CRM ID`);
+    return FIELD_MAPPING.ZOHO_ID;
+  }
   
   // Look for ZOHO_ID or equivalent in dynamic mapping
   if (fieldMapping.ZOHO_ID || fieldMapping['Zoho CRM ID']) {
@@ -158,7 +173,7 @@ async function syncFromAirtableToZoho(recordId, zohoFieldName, newValue, mapping
 
 // Simplified phone sync functions (now just thin wrappers)
 async function syncPhoneFromZohoToAirtable(leadId, newPhoneValue) {
-  const phoneMapping = await getFieldMappingFor('Phone');
+  const phoneMapping = getFieldMappingFor('Phone');
   if (!phoneMapping) {
     console.log(`⚠️  No field mapping found for Phone field`);
     return false;
@@ -174,7 +189,7 @@ async function syncPhoneFromZohoToAirtable(leadId, newPhoneValue) {
 }
 
 async function syncPhoneFromAirtableToZoho(recordId, newPhoneValue) {
-  const phoneMapping = await getFieldMappingFor('Phone');
+  const phoneMapping = getFieldMappingFor('Phone');
   if (!phoneMapping) {
     console.log(`⚠️  No field mapping found for Phone field`);
     return false;
@@ -206,14 +221,14 @@ async function createAirtableRecordFromZohoLead(leadId, leadData) {
     const recordData = { fields: {} };
     
     // Get Zoho CRM ID mapping
-    const zohoCrmIdMapping = await getZohoCrmIdMapping();
+    const zohoCrmIdMapping = getZohoCrmIdMapping();
     if (zohoCrmIdMapping) {
       recordData.fields[zohoCrmIdMapping.airtable] = leadId;
       console.log(`📋 Adding Zoho CRM ID: ${leadId}`);
     }
     
     // Add phone if available and mapped
-    const phoneMapping = await getFieldMappingFor('Phone');
+    const phoneMapping = getFieldMappingFor('Phone');
     if (phoneMapping && leadData[phoneMapping.zoho]) {
       recordData.fields[phoneMapping.airtable] = leadData[phoneMapping.zoho];
       console.log(`📞 Adding Phone: ${leadData[phoneMapping.zoho]}`);
@@ -248,7 +263,7 @@ async function handleZohoLeadUpdate(leadId, leadData, changedFieldsInfo) {
     const syncPromises = [];
     
     for (const changedField of changedFieldsInfo.changedFields) {
-      const mapping = await getFieldMappingFor(changedField);
+      const mapping = getFieldMappingFor(changedField);
       
       if (mapping) {
         const newValue = changedFieldsInfo.currentValues[changedField];
@@ -295,8 +310,12 @@ async function handleAirtableRecordUpdate(recordId, changedFieldsInfo) {
   console.log(`\n🔍 Processing Airtable record update for ${recordId}`);
   
   try {
-    // Get dynamic field mappings
-    const fieldMapping = await getFieldMapping();
+    // Get cached field mappings
+    const fieldMapping = fieldMappingCache.getFieldMapping();
+    if (!fieldMapping) {
+      console.warn(`⚠️  Field mapping cache not ready, skipping Airtable record update`);
+      return;
+    }
     console.log(`📋 Available field mappings: ${Object.keys(fieldMapping).join(', ')}`);
     
     const syncPromises = [];
