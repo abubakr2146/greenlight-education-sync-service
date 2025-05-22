@@ -3,7 +3,8 @@ const {
   getRecordsModifiedSince, 
   getAllRecordsForSync, 
   getRecordById,
-  findAirtableRecordByZohoId 
+  findAirtableRecordByZohoId,
+  getFieldIdToNameMapping 
 } = require('./airtableService');
 const { 
   createAirtableRecordFromZohoLead, 
@@ -262,6 +263,9 @@ async function syncAirtableToZoho(change) {
     return false;
   }
 
+  // Get field ID to name mapping to resolve field IDs to actual field names (CRITICAL FIX)
+  const fieldIdToName = await getFieldIdToNameMapping();
+
   // Get current Zoho lead to compare values
   const currentZohoLead = await getLeadDetails(change.zohoId);
   if (!currentZohoLead || !currentZohoLead.data || !currentZohoLead.data[0]) {
@@ -276,8 +280,11 @@ async function syncAirtableToZoho(change) {
 
   // Compare and sync only changed fields
   for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
-    const airtableField = mapping.airtable;
-    const airtableValue = recordData.fields[airtableField];
+    const airtableFieldId = mapping.airtable;
+    
+    // Resolve field ID to field name (CRITICAL FIX from bulk sync)
+    const airtableFieldName = fieldIdToName[airtableFieldId] || airtableFieldId;
+    const airtableValue = recordData.fields[airtableFieldName];
     
     if (airtableValue !== undefined && !shouldIgnoreField(zohoField)) {
       const zohoValue = currentZohoData[zohoField];
@@ -285,7 +292,7 @@ async function syncAirtableToZoho(change) {
       // Compare values - only sync if different
       if (!areValuesEqual(airtableValue, zohoValue)) {
         fieldsToSync++;
-        console.log(`🔄 Field ${zohoField}: "${zohoValue}" → "${airtableValue}"`);
+        console.log(`🔄 Field ${zohoField} (${airtableFieldName}): "${zohoValue}" → "${airtableValue}"`);
         syncPromises.push(
           syncFieldFromAirtableToZoho(change.id, zohoField, airtableValue, mapping)
             .catch(error => {
