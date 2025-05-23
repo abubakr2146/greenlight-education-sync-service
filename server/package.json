@@ -4,19 +4,29 @@
   "description": "",
   "main": "app.js",
   "scripts": {
+    "start": "node app.js",
     "sync": "node syncManager.js",
     "sync:status": "node syncManager.js status",
     "sync:full": "node syncManager.js --full",
-    "sync:bulk": "node bulkSync.js",
-    "sync:bulk:preview": "node bulkSync.js --dry-run",
-    "sync:bulk:verbose": "node bulkSync.js --verbose",
-    "sync:daemon": "node syncDaemon.js",
-    "sync:daemon:verbose": "node syncDaemon.js --verbose",
+
+    "sync:bulk": "node bulkSync.js --module Leads",
+    "sync:bulk:leads": "node bulkSync.js --module Leads",
+    "sync:bulk:leads:preview": "node bulkSync.js --module Leads --dry-run",
+    "sync:bulk:leads:verbose": "node bulkSync.js --module Leads --verbose",
+    "sync:bulk:contacts": "node bulkSync.js --module Contacts",
+    "sync:bulk:contacts:preview": "node bulkSync.js --module Contacts --dry-run",
+
+    "sync:daemon": "node syncDaemon.js --modules Leads",
+    "sync:daemon:leads": "node syncDaemon.js --modules Leads",
+    "sync:daemon:leads:verbose": "node syncDaemon.js --modules Leads --verbose",
+    "sync:daemon:contacts": "node syncDaemon.js --modules Contacts",
+    "sync:daemon:multi": "node syncDaemon.js --modules Leads,Contacts,Accounts",
+    "sync:daemon:multi:verbose": "node syncDaemon.js --modules Leads,Contacts,Accounts --verbose",
+
     "export:mappings": "node exportFieldMappings.js",
     "export:mappings:preview": "node exportFieldMappings.js --preview",
     "export:mappings:leads": "node exportFieldMappings.js --module Leads",
-    "export:mappings:leads:preview": "node exportFieldMappings.js --module Leads --preview",
-    "start": "node app.js"
+    "export:mappings:leads:preview": "node exportFieldMappings.js --module Leads --preview"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +35,7 @@
     "axios": "^1.9.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "yargs": "^17.7.2"
   }
 }

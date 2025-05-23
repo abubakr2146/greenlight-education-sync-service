@@ -562,6 +562,7 @@ async function deleteZohoLead(leadId, config = null) {
 module.exports = {
   // Core functions
   refreshZohoToken,
+  getZohoModulePluralName, // Added for export
   
   // Module-aware functions
   getRecordDetails,

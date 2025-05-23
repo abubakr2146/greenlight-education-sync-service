@@ -4,6 +4,21 @@ const recentRecordSyncs = new Map(); // Track record-level syncs for polling
 const SYNC_COOLDOWN_MS = 10000; // 10 seconds cooldown
 const RECORD_SYNC_COOLDOWN_MS = 120000; // 2 minutes cooldown for record-level syncs
 
+// Function to record a specific field value sync
+function recordSyncedValue(source, recordId, fieldName, newValue) {
+  const syncKey = `${source}:${recordId}:${fieldName}`;
+  const now = Date.now();
+  recentSyncs.set(syncKey, { timestamp: now, value: newValue });
+
+  // Clean up old entries (older than cooldown period) - can be run less frequently if performance is an issue
+  // For simplicity, running it here.
+  for (const [key, data] of recentSyncs.entries()) {
+    if ((now - data.timestamp) > SYNC_COOLDOWN_MS) {
+      recentSyncs.delete(key);
+    }
+  }
+}
+
 // Function to check if we should skip sync to prevent loops
 function shouldSkipSync(source, recordId, fieldName, newValue) {
   const syncKey = `${source}:${recordId}:${fieldName}`;
@@ -14,22 +29,15 @@ function shouldSkipSync(source, recordId, fieldName, newValue) {
     if ((now - lastSync.timestamp) < SYNC_COOLDOWN_MS) {
       // Check if the value is the same as what we just synced
       if (JSON.stringify(lastSync.value) === JSON.stringify(newValue)) {
-        return true;
+        return true; // Skip if same value within cooldown
       }
     }
   }
   
-  // Record this sync
-  recentSyncs.set(syncKey, { timestamp: now, value: newValue });
+  // If not skipping, record this attempt (or successful sync)
+  recordSyncedValue(source, recordId, fieldName, newValue);
   
-  // Clean up old entries (older than cooldown period)
-  for (const [key, data] of recentSyncs.entries()) {
-    if ((now - data.timestamp) > SYNC_COOLDOWN_MS) {
-      recentSyncs.delete(key);
-    }
-  }
-  
-  return false;
+  return false; // Don't skip
 }
 
 // Clear sync history for a specific key (useful for testing)
@@ -113,6 +121,7 @@ function getRecordSyncStatus() {
 
 module.exports = {
   shouldSkipSync,
+  recordSyncedValue, // Added export
   clearSyncHistory,
   getSyncStatus,
   shouldSkipRecordSync,
