@@ -1,0 +1,103 @@
+🚀 Starting Bulk Synchronization for Leads
+=====================================
+🎯 Mode: LIVE SYNC
+📊 Verbose: OFF
+
+🔧 Initializing field mapping cache for Leads...
+Field mapping cache refreshed for module Leads: 23 mappings
+✅ Field mapping ready for Leads: 23 fields mapped
+
+[SyncService][Leads] Zoho CRM ID mapping not found in dynamic cache. Falling back to static.
+ℹ️  Using Airtable field 'Zoho CRM ID' for Zoho CRM ID.
+📥 Fetching records from both systems...
+📥 Fetching Zoho Leads record IDs & timestamps...
+📥 Fetching complete Airtable records for Leads from table 'Leads'...
+.
+.
+📥 Fetching full Leads details...
+.
+📊 Found 6 Zoho Leads records, 7 Airtable records for Leads
+
+📋 Creating sync plan...
+📈 Sync Plan Summary:
+├─ Zoho → Airtable: 1
+├─ Airtable → Zoho: 0
+├─ New Airtable records: 0
+├─ New Zoho records: 0
+├─ Conflicts (manual review): 0
+└─ No sync needed: 5
+
+⚡ Executing sync plan...
+[1/1] Syncing Zoho Leads 4717452000028153104 → Airtable record recxzesUi0fMF1snD (Zoho 6min newer)
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Airtable Record ID mapping not found in dynamic cache. Falling back to static.
+[SyncService][Leads] Synced Zoho field 'Student_First' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldHkDFlJjrzGR8Ug'.
+[SyncService][Leads] Synced Zoho field 'Lead_Source' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldQdM6V97fi6BQak'.
+[SyncService][Leads] Synced Zoho field 'Parent_or_Student' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'flduB5QTo0ShFhFLC'.
+[SyncService][Leads] Synced Zoho field 'Last_Name' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fld4tQ7yzsLMFUUx6'.
+[SyncService][Leads] Synced Zoho field 'Full_Name' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldaOkkI53zSSrtDT'.
+[SyncService][Leads] Synced Zoho field 'Fillout_ID' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldsa2Wh4rr6YtckH'.
+[SyncService][Leads] Synced Zoho field 'Salutation' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldaw308OiBA1u8cJ'.
+[SyncService][Leads] Synced Zoho field 'Country' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldOxUvVJHyBcoITw'.
+[SyncService][Leads] Synced Zoho field 'State' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldmwlAmyh0pbhw1Y'.
+[SyncService][Leads] Synced Zoho field 'City' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fld6KrFss1jmzqsd7'.
+[SyncService][Leads] Synced Zoho field 'Student_Phone' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldTsMmL4EXpjtF5p'.
+[SyncService][Leads] Synced Zoho field 'First_Name' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldv8DZ4Y35XWW2Dm'.
+[SyncService][Leads] Synced Zoho field 'LinkedIn_URL' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fld9qpN9qJivO1S3V'.
+[SyncService][Leads] Synced Zoho field 'Email' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldORZ2e66DpJ4vtI'.
+[SyncService][Leads] Synced Zoho field 'Student_Email' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'flddY9zUHWtUVYFSb'.
+[SyncService][Leads] Synced Zoho field 'Phone' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldzz2OKqor61i6Ee'.
+[SyncService][Leads] Synced Zoho field 'Lead_Status' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldYusjvC4AgH7A0P'.
+[SyncService][Leads] Synced Zoho field 'Student_Last' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fld4vtkgyiGBgHSsW'.
+[SyncService][Leads] Synced Zoho field 'Looking_For' (ID: 4717452000028153104) to Airtable record recxzesUi0fMF1snD, field 'fldvXw11miqYtXCaf'.
+
+🗑️  Performing deletion checks...
+Marking Airtable record rechHiUg6zqTaWs4o (for Leads) as 'Deleted in Zoho' (Zoho ID 4717452000028159098 not found)
+
+🗑️  Deletion check completed: 0 Zoho Leads(s)  deleted, 0 Airtable record(s)  marked as deleted.
+
+🎉 Sync for Leads Completed!
+========================
+📊 Total Zoho Leads Records Processed: 6
+📊 Total Airtable Records for Leads Processed: 7
+
+📈 Sync Results:
+├─ New Airtable Records: 0
+├─ New Zoho Leads Records: 0
+├─ Zoho → Airtable Syncs: 1
+├─ Airtable → Zoho Syncs: 0
+├─ Zoho Leads Records Deleted: 0
+├─ Airtable Records Marked Deleted: 0
+├─ Errors: 1
+└─ Total Operations: 1
+
+✨ Success Rate (based on operations vs errors): 50%
+
+✅ Field mapping cache for Leads destroyed.

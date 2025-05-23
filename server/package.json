@@ -15,6 +15,13 @@
     "sync:bulk:leads:verbose": "node bulkSync.js --module Leads --verbose",
     "sync:bulk:contacts": "node bulkSync.js --module Contacts",
     "sync:bulk:contacts:preview": "node bulkSync.js --module Contacts --dry-run",
+    "sync:bulk:partners": "node bulkSync.js --module Partners",
+    "sync:bulk:partners:preview": "node bulkSync.js --module Partners --dry-run",
+
+    "sync:cron": "node bulkSyncCron.js",
+    "sync:cron:hourly": "node bulkSyncCron.js --modules Leads,Partners --cron \"0 * * * *\"",
+    "sync:cron:daily": "node bulkSyncCron.js --modules Leads,Partners --cron \"0 2 * * *\"",
+    "sync:cron:test": "node bulkSyncCron.js --modules Leads,Partners --run-now --verbose",
 
     "sync:daemon": "node syncDaemon.js --modules Leads",
     "sync:daemon:leads": "node syncDaemon.js --modules Leads",

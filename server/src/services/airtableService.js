@@ -472,8 +472,8 @@ async function getRecordById(recordId, config = null) {
   }
 }
 
-// Get complete field ID to name mapping for the table
-async function getFieldIdToNameMapping(config = null) {
+// Get complete field ID to name mapping for the table (module-aware)
+async function getFieldIdToNameMapping(config = null, module = 'Leads') {
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
@@ -482,6 +482,16 @@ async function getFieldIdToNameMapping(config = null) {
   }
 
   try {
+    // Get the module table configuration
+    const moduleTableConfig = await getModuleTableConfig(module, config);
+    if (!moduleTableConfig) {
+      console.error(`[AirtableService] Module ${module} not found in Airtable`);
+      return {};
+    }
+    
+    const tableId = moduleTableConfig.tableId;
+    const tableName = moduleTableConfig.tableName;
+    
     const response = await axios.get(
       `${config.apiUrl}/meta/bases/${config.baseId}/tables`,
       {
@@ -492,8 +502,9 @@ async function getFieldIdToNameMapping(config = null) {
       }
     );
     
-    const table = response.data.tables.find(t => t.id === config.tableId || t.name === config.tableName);
+    const table = response.data.tables.find(t => t.id === tableId || t.name === tableName);
     if (!table) {
+      console.error(`[AirtableService] Table not found for module ${module} (tableId: ${tableId}, tableName: ${tableName})`);
       return {};
     }
     
@@ -504,6 +515,7 @@ async function getFieldIdToNameMapping(config = null) {
     
     return fieldMapping;
   } catch (error) {
+    console.error(`[AirtableService] Error getting field mapping for module ${module}:`, error.message);
     return {};
   }
 }
