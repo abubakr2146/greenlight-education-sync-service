@@ -303,6 +303,7 @@ async function createZohoLeadFromAirtableRecord(recordId, recordData) {
     }
     
     // Create the lead in Zoho
+    console.log(`🔄 Creating Zoho lead with data:`, Object.keys(leadData).length, 'fields');
     const createResponse = await createZohoLead(leadData);
     
     if (createResponse && createResponse.data && createResponse.data[0]) {
@@ -315,17 +316,24 @@ async function createZohoLeadFromAirtableRecord(recordId, recordData) {
         const fieldUpdates = {
           [zohoCrmIdMapping.airtable]: newZohoLeadId
         };
-        await updateAirtableRecord(recordId, fieldUpdates);
+        console.log(`📝 Updating Airtable record ${recordId} with Zoho CRM ID ${newZohoLeadId}`);
+        const updateResult = await updateAirtableRecord(recordId, fieldUpdates);
+        if (!updateResult) {
+          console.log(`❌ Failed to update Airtable record with Zoho CRM ID`);
+        }
       }
       
+      console.log(`✅ Created Zoho lead ${newZohoLeadId} from Airtable record ${recordId}`);
       return {
         id: newZohoLeadId,
         data: newZohoLead.details
       };
     }
     
+    console.log(`❌ Failed to create Zoho lead - no valid response`);
     return null;
   } catch (error) {
+    console.log(`❌ Error creating Zoho lead from Airtable:`, error.message);
     return null;
   }
 }

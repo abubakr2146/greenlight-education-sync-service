@@ -485,10 +485,46 @@ async function getFieldIdToNameMapping(config = null) {
   }
 }
 
+// Update a single field in Airtable record
+async function updateAirtableField(recordId, fieldName, value, config = null) {
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      return false;
+    }
+  }
+
+  try {
+    // First get the field ID for the field name
+    const fieldId = await getAirtableFieldId(config, fieldName);
+    const fieldToUpdate = fieldId || fieldName; // Use field ID if found, otherwise use name
+    
+    const response = await axios.patch(
+      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}/${recordId}`,
+      {
+        fields: {
+          [fieldToUpdate]: value
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${config.apiToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return !!response.data;
+  } catch (error) {
+    return false;
+  }
+}
+
 module.exports = {
   getFieldNames,
   getAirtableFieldId,
   updateAirtableRecord,
+  updateAirtableField,
   createAirtableRecord,
   findAirtableRecordByZohoId,
   findZohoLeadByAirtableId,

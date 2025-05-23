@@ -13,12 +13,13 @@
 
 const axios = require('axios');
 const { loadZohoConfig, loadAirtableConfig } = require('./src/config/config');
-const { getMultipleLeadDetails, refreshZohoToken } = require('./src/services/zohoService');
+const { getMultipleLeadDetails, refreshZohoToken, deleteZohoLead } = require('./src/services/zohoService');
 const { 
   getAllRecordsForSync, 
   getRecordById,
   findAirtableRecordByZohoId,
-  getFieldIdToNameMapping 
+  getFieldIdToNameMapping,
+  updateAirtableField 
 } = require('./src/services/airtableService');
 const { createAirtableRecordFromZohoLead } = require('./src/services/syncService');
 const { 
@@ -91,7 +92,7 @@ class BulkSync {
 
       // Step 3: Execute sync
       console.log('⚡ Executing sync plan...');
-      await this.executeBulkSyncPlan(syncPlan);
+      await this.executeBulkSyncPlan(syncPlan, zohoLeads, airtableRecords);
 
       // Step 4: Show results
       this.showResults();
@@ -375,19 +376,15 @@ class BulkSync {
         // Airtable record has no Zoho CRM ID - create new Zoho lead
         plan.newZohoLeads.push(airtableRecord);
       } else if (!zohoMap.has(airtableRecord.zohoId)) {
-        // Airtable record references non-existent Zoho lead
-        plan.conflicts.push({
-          type: 'orphaned_airtable',
-          airtable: airtableRecord,
-          reason: 'Airtable record references non-existent Zoho lead'
-        });
+        // Airtable record references non-existent Zoho lead - will be marked as deleted
+        // This is handled in the deletion check at the end
       }
     }
 
     return plan;
   }
 
-  async executeBulkSyncPlan(plan) {
+  async executeBulkSyncPlan(plan, zohoLeads, airtableRecords) {
     let processed = 0;
     const total = plan.zohoToAirtable.length + plan.airtableToZoho.length + plan.newAirtableRecords.length + plan.newZohoLeads.length;
 
@@ -487,6 +484,54 @@ class BulkSync {
         }
       }
     }
+    
+    // Simple deletion check
+    console.log('\n🗑️  Checking for deletions...');
+    
+    const zohoIds = new Set(zohoLeads.map(lead => lead.id));
+    const airtableWithZohoId = airtableRecords.filter(r => r.zohoId);
+    
+    let deletedZoho = 0;
+    let markedDeleted = 0;
+    
+    // Delete Zoho leads not in Airtable (only if they're old enough)
+    for (const zohoLead of zohoLeads) {
+      const hasAirtable = airtableRecords.some(r => r.zohoId === zohoLead.id);
+      if (!hasAirtable) {
+        // Check if lead is older than 24 hours
+        const createdTime = new Date(zohoLead.data.Created_Time).getTime();
+        const ageInHours = (Date.now() - createdTime) / (1000 * 60 * 60);
+        
+        if (ageInHours > 24) {
+          processed++;
+          if (!this.dryRun) {
+            const deleted = await deleteZohoLead(zohoLead.id);
+            if (deleted) deletedZoho++;
+          } else {
+            deletedZoho++; // Count for dry run
+          }
+          console.log(`[${processed}/${total + zohoLeads.length + airtableWithZohoId.length}] ${this.dryRun ? '[DRY RUN] Would delete' : 'Deleted'} Zoho lead ${zohoLead.id} (${Math.round(ageInHours)} hours old)`);
+        } else {
+          console.log(`⏭️  Skipping deletion of new Zoho lead ${zohoLead.id} (only ${Math.round(ageInHours)} hours old)`);
+        }
+      }
+    }
+    
+    // Mark Airtable records as deleted
+    for (const airtableRecord of airtableWithZohoId) {
+      if (!zohoIds.has(airtableRecord.zohoId)) {
+        processed++;
+        if (!this.dryRun) {
+          const updated = await updateAirtableField(airtableRecord.id, 'Lead Status', 'Deleted Lead');
+          if (updated) markedDeleted++;
+        } else {
+          markedDeleted++; // Count for dry run
+        }
+        console.log(`[${processed}/${total + zohoLeads.length + airtableWithZohoId.length}] ${this.dryRun ? '[DRY RUN] Would mark' : 'Marked'} Airtable record ${airtableRecord.id} as deleted`);
+      }
+    }
+    
+    console.log(`\n🗑️  Deletion check completed: ${deletedZoho} Zoho deleted, ${markedDeleted} Airtable marked as deleted`);
   }
 
 

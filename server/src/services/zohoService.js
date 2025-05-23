@@ -389,11 +389,68 @@ async function createZohoLead(leadData, config = null) {
   }
 }
 
+// Delete a Zoho lead
+async function deleteZohoLead(leadId, config = null) {
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      return false;
+    }
+  }
+
+  try {
+    // Check if token needs refresh
+    if (Date.now() >= config.tokenExpiry) {
+      const refreshed = await refreshZohoToken(config);
+      if (!refreshed) {
+        return false;
+      }
+    }
+    
+    const response = await axios.delete(
+      `${config.apiDomain}/crm/v2/Leads/${leadId}`,
+      {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return response.data?.data?.[0]?.status === 'success';
+  } catch (error) {
+    // If token is invalid, try refreshing once
+    if (error.response?.data?.code === 'INVALID_TOKEN') {
+      const refreshed = await refreshZohoToken(config);
+      if (refreshed) {
+        // Retry the request with new token
+        try {
+          const response = await axios.delete(
+            `${config.apiDomain}/crm/v2/Leads/${leadId}`,
+            {
+              headers: {
+                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          return response.data?.data?.[0]?.status === 'success';
+        } catch (retryError) {
+          return false;
+        }
+      }
+    }
+    
+    return false;
+  }
+}
+
 module.exports = {
   refreshZohoToken,
   getLeadDetails,
   updateZohoLead,
   createZohoLead,
+  deleteZohoLead,
   getChangedFields,
   logLeadDetails,
   getLeadsModifiedSince,

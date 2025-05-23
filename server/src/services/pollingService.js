@@ -1,11 +1,12 @@
-const { getLeadsModifiedSince, getMultipleLeadDetails, getLeadDetails } = require('./zohoService');
+const { getLeadsModifiedSince, getMultipleLeadDetails, getLeadDetails, deleteZohoLead } = require('./zohoService');
 const { 
   getRecordsModifiedSince, 
   getAllRecordsForSync, 
   getRecordById,
   findAirtableRecordByZohoId,
   findZohoLeadByAirtableId,
-  getFieldIdToNameMapping 
+  getFieldIdToNameMapping,
+  updateAirtableField 
 } = require('./airtableService');
 const { 
   createAirtableRecordFromZohoLead,
@@ -47,6 +48,70 @@ async function performSync() {
     lastSyncTimestamp = Date.now();
     
     console.log(`✅ Sync completed successfully: ${results.successful} successful, ${results.failed} failed`);
+    
+    // Step 5: Simple deletion check
+    try {
+      console.log(`\n🗑️  Checking for deletions...`);
+      
+      // Get all Zoho leads and Airtable records
+      const zohoResponse = await getLeadsModifiedSince(0); // Get all
+      const airtableResponse = await getAllRecordsForSync();
+      
+      if (zohoResponse?.data && airtableResponse?.records) {
+        const zohoIds = new Set(zohoResponse.data.map(lead => lead.id));
+        const airtableMap = new Map();
+        
+        // Build map of Zoho ID -> Airtable record
+        for (const record of airtableResponse.records) {
+          const zohoId = record.fields['Zoho CRM ID'];
+          if (zohoId) {
+            airtableMap.set(zohoId, record);
+          }
+        }
+        
+        let deletedZoho = 0;
+        let markedDeleted = 0;
+        
+        // Check Zoho leads not in Airtable
+        for (const lead of zohoResponse.data) {
+          if (!airtableMap.has(lead.id)) {
+            // Check if lead is older than 24 hours
+            const createdTime = new Date(lead.Created_Time).getTime();
+            const ageInHours = (Date.now() - createdTime) / (1000 * 60 * 60);
+            
+            if (ageInHours > 24) {
+              const deleted = await deleteZohoLead(lead.id);
+              if (deleted) {
+                deletedZoho++;
+                console.log(`  🗑️ Deleted Zoho lead ${lead.id} (not in Airtable, ${Math.round(ageInHours)} hours old)`);
+              }
+            } else {
+              console.log(`  ⏭️  Skipping deletion of new Zoho lead ${lead.id} (only ${Math.round(ageInHours)} hours old)`);
+            }
+          }
+        }
+        
+        // Check Airtable records with missing Zoho leads
+        for (const [zohoId, record] of airtableMap) {
+          if (!zohoIds.has(zohoId)) {
+            const updated = await updateAirtableField(record.id, 'Lead Status', 'Deleted Lead');
+            if (updated) {
+              markedDeleted++;
+              console.log(`  📝 Marked Airtable record ${record.id} as deleted (Zoho lead ${zohoId} missing)`);
+            }
+          }
+        }
+        
+        if (deletedZoho > 0 || markedDeleted > 0) {
+          console.log(`🗑️  Deletion sync completed: ${deletedZoho} Zoho deleted, ${markedDeleted} Airtable marked as deleted`);
+        } else {
+          console.log(`🗑️  No deletions needed`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Deletion sync failed:', error.message);
+    }
+    
     return results;
     
   } catch (error) {
