@@ -29,8 +29,6 @@ async function refreshZohoToken(config) {
   }
 }
 
-// ========== MODULE-AWARE FUNCTIONS ==========
-
 // Fetch record details from Zoho with automatic token refresh (module-aware)
 async function getRecordDetails(recordId, module = 'Leads', config = null) {
   if (!config) {
@@ -88,8 +86,14 @@ async function getRecordDetails(recordId, module = 'Leads', config = null) {
   }
 }
 
-// Update Zoho record with automatic token refresh (module-aware)
-async function updateZohoRecord(recordId, fieldUpdates, module = 'Leads', config = null) {
+// Legacy function for backward compatibility
+async function getLeadDetails(leadId, config = null) {
+  return getRecordDetails(leadId, 'Leads', config);
+}
+
+// DEPRECATED: Use getRecordDetails instead
+// Fetch lead details from Zoho with automatic token refresh
+async function __deprecated_getLeadDetails(leadId, config = null) {
   if (!config) {
     config = loadZohoConfig();
     if (!config) {
@@ -106,9 +110,63 @@ async function updateZohoRecord(recordId, fieldUpdates, module = 'Leads', config
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
+    const response = await axios.get(
+      `${config.apiDomain}/crm/v2/Leads/${leadId}`,
+      {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    // If token is invalid, try refreshing once
+    if (error.response?.data?.code === 'INVALID_TOKEN') {
+      const refreshed = await refreshZohoToken(config);
+      if (refreshed) {
+        // Retry the request with new token
+        try {
+          const response = await axios.get(
+            `${config.apiDomain}/crm/v2/Leads/${leadId}`,
+            {
+              headers: {
+                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          return response.data;
+        } catch (retryError) {
+          return null;
+        }
+      }
+    }
+    
+    return null;
+  }
+}
+
+// Update Zoho lead with automatic token refresh
+async function updateZohoLead(leadId, fieldUpdates, config = null) {
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    // Check if token needs refresh
+    if (Date.now() >= config.tokenExpiry) {
+      const refreshed = await refreshZohoToken(config);
+      if (!refreshed) {
+        return null;
+      }
+    }
+    
     const response = await axios.put(
-      `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
+      `${config.apiDomain}/crm/v2/Leads/${leadId}`,
       {
         data: [fieldUpdates]
       },
@@ -128,9 +186,8 @@ async function updateZohoRecord(recordId, fieldUpdates, module = 'Leads', config
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
           const response = await axios.put(
-            `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
+            `${config.apiDomain}/crm/v2/Leads/${leadId}`,
             {
               data: [fieldUpdates]
             },
@@ -152,8 +209,190 @@ async function updateZohoRecord(recordId, fieldUpdates, module = 'Leads', config
   }
 }
 
-// Create Zoho record (module-aware)
-async function createZohoRecord(recordData, module = 'Leads', config = null) {
+// Show only changed fields with filtering
+function getChangedFields(leadId, leadData, affectedFieldsArray) {
+  if (!affectedFieldsArray || affectedFieldsArray.length === 0) {
+    return;
+  }
+  
+  // Find the affected fields for this specific lead ID
+  const leadAffectedFields = affectedFieldsArray.find(item => item[leadId]);
+  
+  if (!leadAffectedFields || !leadAffectedFields[leadId]) {
+    return;
+  }
+  
+  const allChangedFields = leadAffectedFields[leadId];
+  // Filter out ignored fields
+  const changedFieldNames = filterIgnoredFields(allChangedFields, 'zoho');
+  
+  if (allChangedFields.length !== changedFieldNames.length) {
+    const { shouldIgnoreField } = require('../config/config');
+    const ignoredFields = allChangedFields.filter(field => shouldIgnoreField(field, 'zoho'));
+  }
+  
+  return {
+    changedFields: changedFieldNames,
+    allChangedFields: allChangedFields,
+    currentValues: changedFieldNames.reduce((acc, field) => {
+      acc[field] = leadData[field];
+      return acc;
+    }, {})
+  };
+}
+
+// Extract key lead information for logging
+function logLeadDetails(lead) {
+  // Lead details logged
+}
+
+// Fetch leads modified since a specific timestamp
+async function getLeadsModifiedSince(sinceTimestamp, config = null) {
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  try {
+    // Check if token needs refresh
+    if (Date.now() >= config.tokenExpiry) {
+      const refreshed = await refreshZohoToken(config);
+      if (!refreshed) {
+        return null;
+      }
+    }
+
+    // Format timestamp for Zoho API (ISO format)
+    const sinceDate = new Date(sinceTimestamp).toISOString();
+    
+    const response = await axios.get(
+      `${config.apiDomain}/crm/v2/Leads`,
+      {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          'sort_by': 'Modified_Time',
+          'sort_order': 'desc',
+          'page': 1,
+          'per_page': 200, // Max records per page
+          'fields': 'id,Modified_Time', // We'll fetch full details separately
+          'criteria': `(Modified_Time:greater_than:${sinceDate})`
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    // If token is invalid, try refreshing once
+    if (error.response?.data?.code === 'INVALID_TOKEN') {
+      const refreshed = await refreshZohoToken(config);
+      if (refreshed) {
+        // Retry the request with new token
+        try {
+          const sinceDate = new Date(sinceTimestamp).toISOString();
+          const response = await axios.get(
+            `${config.apiDomain}/crm/v2/Leads`,
+            {
+              headers: {
+                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              params: {
+                'sort_by': 'Modified_Time',
+                'sort_order': 'desc',
+                'page': 1,
+                'per_page': 200,
+                'fields': 'id,Modified_Time',
+                'criteria': `(Modified_Time:greater_than:${sinceDate})`
+              }
+            }
+          );
+          return response.data;
+        } catch (retryError) {
+          return null;
+        }
+      }
+    }
+    
+    return null;
+  }
+}
+
+// Fetch all fields for multiple leads efficiently
+async function getMultipleLeadDetails(leadIds, config = null) {
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      return null;
+    }
+  }
+
+  if (!leadIds || leadIds.length === 0) {
+    return { data: [] };
+  }
+
+  try {
+    // Check if token needs refresh
+    if (Date.now() >= config.tokenExpiry) {
+      const refreshed = await refreshZohoToken(config);
+      if (!refreshed) {
+        return null;
+      }
+    }
+
+    // Zoho allows up to 100 IDs per request
+    const idsString = leadIds.slice(0, 100).join(',');
+    
+    const response = await axios.get(
+      `${config.apiDomain}/crm/v2/Leads`,
+      {
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          'ids': idsString
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    // If token is invalid, try refreshing once
+    if (error.response?.data?.code === 'INVALID_TOKEN') {
+      const refreshed = await refreshZohoToken(config);
+      if (refreshed) {
+        try {
+          const idsString = leadIds.slice(0, 100).join(',');
+          const response = await axios.get(
+            `${config.apiDomain}/crm/v2/Leads`,
+            {
+              headers: {
+                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              params: {
+                'ids': idsString
+              }
+            }
+          );
+          return response.data;
+        } catch (retryError) {
+          return null;
+        }
+      }
+    }
+    
+    return null;
+  }
+}
+
+// Create Zoho lead
+async function createZohoLead(leadData, config = null) {
   if (!config) {
     config = loadZohoConfig();
     if (!config) {
@@ -170,11 +409,10 @@ async function createZohoRecord(recordData, module = 'Leads', config = null) {
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
     const response = await axios.post(
-      `${config.apiDomain}/crm/v2/${modulePlural}`,
+      `${config.apiDomain}/crm/v2/Leads`,
       {
-        data: [recordData]
+        data: [leadData]
       },
       {
         headers: {
@@ -192,11 +430,10 @@ async function createZohoRecord(recordData, module = 'Leads', config = null) {
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
           const response = await axios.post(
-            `${config.apiDomain}/crm/v2/${modulePlural}`,
+            `${config.apiDomain}/crm/v2/Leads`,
             {
-              data: [recordData]
+              data: [leadData]
             },
             {
               headers: {
@@ -216,225 +453,8 @@ async function createZohoRecord(recordData, module = 'Leads', config = null) {
   }
 }
 
-// Search Zoho records by criteria (module-aware)
-async function searchZohoRecords(criteria, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadZohoConfig();
-    if (!config) {
-      return null;
-    }
-  }
-
-  try {
-    // Check if token needs refresh
-    if (Date.now() >= config.tokenExpiry) {
-      const refreshed = await refreshZohoToken(config);
-      if (!refreshed) {
-        return null;
-      }
-    }
-    
-    const modulePlural = getZohoModulePluralName(module);
-    const response = await axios.get(
-      `${config.apiDomain}/crm/v2/${modulePlural}/search`,
-      {
-        headers: {
-          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        params: criteria
-      }
-    );
-    
-    return response.data;
-  } catch (error) {
-    // If token is invalid, try refreshing once
-    if (error.response?.data?.code === 'INVALID_TOKEN') {
-      const refreshed = await refreshZohoToken(config);
-      if (refreshed) {
-        // Retry the request with new token
-        try {
-          const modulePlural = getZohoModulePluralName(module);
-          const response = await axios.get(
-            `${config.apiDomain}/crm/v2/${modulePlural}/search`,
-            {
-              headers: {
-                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              params: criteria
-            }
-          );
-          return response.data;
-        } catch (retryError) {
-          return null;
-        }
-      }
-    }
-    
-    // Return null for other errors including NO_CONTENT
-    return null;
-  }
-}
-
-// Get records modified since a timestamp (module-aware)
-async function getRecordsModifiedSince(sinceTimestamp, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadZohoConfig();
-    if (!config) {
-      return null;
-    }
-  }
-
-  try {
-    // Check if token needs refresh
-    if (Date.now() >= config.tokenExpiry) {
-      const refreshed = await refreshZohoToken(config);
-      if (!refreshed) {
-        return null;
-      }
-    }
-    
-    const sinceDate = new Date(sinceTimestamp).toISOString();
-    const modulePlural = getZohoModulePluralName(module);
-    
-    const response = await axios.get(
-      `${config.apiDomain}/crm/v2/${modulePlural}`,
-      {
-        headers: {
-          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
-          'Content-Type': 'application/json',
-          'If-Modified-Since': sinceDate
-        },
-        params: {
-          fields: 'id,Modified_Time,Created_Time',
-          sort_by: 'Modified_Time',
-          sort_order: 'desc'
-        }
-      }
-    );
-    
-    return response.data;
-  } catch (error) {
-    if (error.response?.status === 304) {
-      // No modifications since the given timestamp
-      return { data: [] };
-    }
-    
-    // If token is invalid, try refreshing once
-    if (error.response?.data?.code === 'INVALID_TOKEN') {
-      const refreshed = await refreshZohoToken(config);
-      if (refreshed) {
-        // Retry the request with new token
-        try {
-          const sinceDate = new Date(sinceTimestamp).toISOString();
-          const modulePlural = getZohoModulePluralName(module);
-          
-          const response = await axios.get(
-            `${config.apiDomain}/crm/v2/${modulePlural}`,
-            {
-              headers: {
-                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
-                'Content-Type': 'application/json',
-                'If-Modified-Since': sinceDate
-              },
-              params: {
-                fields: 'id,Modified_Time,Created_Time',
-                sort_by: 'Modified_Time',
-                sort_order: 'desc'
-              }
-            }
-          );
-          
-          return response.data;
-        } catch (retryError) {
-          if (retryError.response?.status === 304) {
-            return { data: [] };
-          }
-          return null;
-        }
-      }
-    }
-    
-    return null;
-  }
-}
-
-// Get multiple record details by IDs (module-aware)
-async function getMultipleRecordDetails(recordIds, module = 'Leads', config = null) {
-  if (!recordIds || recordIds.length === 0) {
-    return { data: [] };
-  }
-  
-  if (!config) {
-    config = loadZohoConfig();
-    if (!config) {
-      return null;
-    }
-  }
-
-  try {
-    // Check if token needs refresh
-    if (Date.now() >= config.tokenExpiry) {
-      const refreshed = await refreshZohoToken(config);
-      if (!refreshed) {
-        return null;
-      }
-    }
-    
-    const modulePlural = getZohoModulePluralName(module);
-    const idsParam = recordIds.join(',');
-    
-    const response = await axios.get(
-      `${config.apiDomain}/crm/v2/${modulePlural}`,
-      {
-        headers: {
-          'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        params: {
-          ids: idsParam
-        }
-      }
-    );
-    
-    return response.data;
-  } catch (error) {
-    // If token is invalid, try refreshing once
-    if (error.response?.data?.code === 'INVALID_TOKEN') {
-      const refreshed = await refreshZohoToken(config);
-      if (refreshed) {
-        // Retry the request with new token
-        try {
-          const modulePlural = getZohoModulePluralName(module);
-          const idsParam = recordIds.join(',');
-          
-          const response = await axios.get(
-            `${config.apiDomain}/crm/v2/${modulePlural}`,
-            {
-              headers: {
-                'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              params: {
-                ids: idsParam
-              }
-            }
-          );
-          
-          return response.data;
-        } catch (retryError) {
-          return null;
-        }
-      }
-    }
-    
-    return null;
-  }
-}
-
-// Delete Zoho record (module-aware)
-async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
+// Delete a Zoho lead
+async function deleteZohoLead(leadId, config = null) {
   if (!config) {
     config = loadZohoConfig();
     if (!config) {
@@ -451,9 +471,8 @@ async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
     const response = await axios.delete(
-      `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
+      `${config.apiDomain}/crm/v2/Leads/${leadId}`,
       {
         headers: {
           'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
@@ -462,13 +481,7 @@ async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
       }
     );
     
-    // Check if deletion was successful
-    if (response.data && response.data.data) {
-      const result = response.data.data[0];
-      return result.code === 'SUCCESS';
-    }
-    
-    return false;
+    return response.data?.data?.[0]?.status === 'success';
   } catch (error) {
     // If token is invalid, try refreshing once
     if (error.response?.data?.code === 'INVALID_TOKEN') {
@@ -476,9 +489,8 @@ async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
           const response = await axios.delete(
-            `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
+            `${config.apiDomain}/crm/v2/Leads/${leadId}`,
             {
               headers: {
                 'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
@@ -486,13 +498,7 @@ async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
               }
             }
           );
-          
-          if (response.data && response.data.data) {
-            const result = response.data.data[0];
-            return result.code === 'SUCCESS';
-          }
-          
-          return false;
+          return response.data?.data?.[0]?.status === 'success';
         } catch (retryError) {
           return false;
         }
@@ -503,83 +509,14 @@ async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
   }
 }
 
-// ========== LEGACY FUNCTIONS FOR BACKWARD COMPATIBILITY ==========
-
-// Legacy function for backward compatibility
-async function getLeadDetails(leadId, config = null) {
-  return getRecordDetails(leadId, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function updateZohoLead(leadId, fieldUpdates, config = null) {
-  return updateZohoRecord(leadId, fieldUpdates, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function createZohoLead(leadData, config = null) {
-  return createZohoRecord(leadData, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function searchLeadsByPhone(phone, config = null) {
-  const criteria = {
-    criteria: `(Phone:equals:${phone})`
-  };
-  return searchZohoRecords(criteria, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function searchLeadsByEmail(email, config = null) {
-  const criteria = {
-    criteria: `(Email:equals:${email})`
-  };
-  return searchZohoRecords(criteria, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function searchLeadsByAirtableId(airtableId, config = null) {
-  const criteria = {
-    criteria: `(Airtable_Record_ID:equals:${airtableId})`
-  };
-  return searchZohoRecords(criteria, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function getLeadsModifiedSince(sinceTimestamp, config = null) {
-  return getRecordsModifiedSince(sinceTimestamp, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function getMultipleLeadDetails(leadIds, config = null) {
-  return getMultipleRecordDetails(leadIds, 'Leads', config);
-}
-
-// Legacy function for backward compatibility
-async function deleteZohoLead(leadId, config = null) {
-  return deleteZohoRecord(leadId, 'Leads', config);
-}
-
 module.exports = {
-  // Core functions
   refreshZohoToken,
-  
-  // Module-aware functions
-  getRecordDetails,
-  updateZohoRecord,
-  createZohoRecord,
-  searchZohoRecords,
-  getRecordsModifiedSince,
-  getMultipleRecordDetails,
-  deleteZohoRecord,
-  
-  // Legacy functions for backward compatibility
   getLeadDetails,
   updateZohoLead,
   createZohoLead,
-  searchLeadsByPhone,
-  searchLeadsByEmail,
-  searchLeadsByAirtableId,
+  deleteZohoLead,
+  getChangedFields,
+  logLeadDetails,
   getLeadsModifiedSince,
-  getMultipleLeadDetails,
-  deleteZohoLead
+  getMultipleLeadDetails
 };

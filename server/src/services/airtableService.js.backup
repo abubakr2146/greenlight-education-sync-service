@@ -1,28 +1,5 @@
 const axios = require('axios');
-const { loadAirtableConfig, loadAirtableConfigForModule, shouldIgnoreField, FIELD_MAPPING } = require('../config/config');
-const { getModuleTableConfig, ZOHO_FIELDS_TABLE_ID, ZOHO_MODULES_TABLE_ID } = require('./moduleConfigService');
-
-// Helper function to get module-specific config
-async function getModuleConfig(config, module) {
-  if (!module || module === 'Leads') {
-    return config; // Default behavior for backward compatibility
-  }
-  
-  try {
-    const moduleTableConfig = await getModuleTableConfig(module, config);
-    
-    // Create a new config object with module-specific overrides
-    return {
-      ...config,
-      tableName: moduleTableConfig.tableName,
-      tableId: moduleTableConfig.tableId,
-      currentModule: module
-    };
-  } catch (error) {
-    console.error(`Error getting module config for ${module}:`, error.message);
-    return config; // Fallback to default config
-  }
-}
+const { loadAirtableConfig, shouldIgnoreField, FIELD_MAPPING } = require('../config/config');
 
 // Get field names from field IDs using Airtable API
 async function getFieldNames(config, fieldIds) {
@@ -543,114 +520,7 @@ async function updateAirtableField(recordId, fieldName, value, config = null) {
   }
 }
 
-// ========== MODULE-AWARE WRAPPER FUNCTIONS ==========
-
-// Module-aware update record function
-async function updateModuleRecord(recordId, fieldUpdates, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return null;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return updateAirtableRecord(recordId, fieldUpdates, moduleConfig);
-}
-
-// Module-aware create record function
-async function createModuleRecord(recordData, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return null;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return createAirtableRecord(recordData, moduleConfig);
-}
-
-// Module-aware find record by Zoho ID
-async function findModuleRecordByZohoId(zohoId, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return null;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return findAirtableRecordByZohoId(zohoId, moduleConfig);
-}
-
-// Module-aware find Zoho ID by Airtable record
-async function findZohoIdByModuleRecord(recordId, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return null;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return findZohoLeadByAirtableId(recordId, moduleConfig);
-}
-
-// Module-aware get records modified since
-async function getModuleRecordsModifiedSince(sinceTimestamp, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return null;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return getRecordsModifiedSince(sinceTimestamp, moduleConfig);
-}
-
-// Module-aware get all records for sync
-async function getAllModuleRecordsForSync(module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return null;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return getAllRecordsForSync(moduleConfig);
-}
-
-// Module-aware get record by ID
-async function getModuleRecordById(recordId, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return null;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return getRecordById(recordId, moduleConfig);
-}
-
-// Module-aware update field
-async function updateModuleField(recordId, fieldName, value, module = 'Leads', config = null) {
-  if (!config) {
-    config = loadAirtableConfig();
-    if (!config) {
-      return false;
-    }
-  }
-  
-  const moduleConfig = await getModuleConfig(config, module);
-  return updateAirtableField(recordId, fieldName, value, moduleConfig);
-}
-
 module.exports = {
-  // Core functions (still available for backward compatibility)
   getFieldNames,
   getAirtableFieldId,
   updateAirtableRecord,
@@ -663,18 +533,5 @@ module.exports = {
   getAllRecordsForSync,
   getRecordById,
   getFieldIdToNameMapping,
-  getModuleRecordIdByApiName,
-  
-  // Module-aware functions
-  updateModuleRecord,
-  createModuleRecord,
-  findModuleRecordByZohoId,
-  findZohoIdByModuleRecord,
-  getModuleRecordsModifiedSince,
-  getAllModuleRecordsForSync,
-  getModuleRecordById,
-  updateModuleField,
-  
-  // Helper functions
-  getModuleConfig
+  getModuleRecordIdByApiName
 };

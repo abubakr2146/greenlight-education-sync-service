@@ -3,81 +3,142 @@ const { loadAirtableConfig } = require('../config/config');
 
 class FieldMappingCache {
   constructor() {
-    this.cache = null;
-    this.lastUpdated = null;
+    this.cacheByModule = new Map(); // Cache per module
+    this.lastUpdatedByModule = new Map();
     this.refreshInterval = 5 * 60 * 1000; // 5 minutes in milliseconds
-    this.intervalId = null;
-    this.isInitializing = false;
-    this.module = null; // Track which module we're caching for
+    this.intervalIds = new Map(); // Interval per module
+    this.isInitializing = new Set(); // Track initialization per module
   }
 
-  async initialize(module = null) {
-    if (this.isInitializing) {
+  async initialize(module = 'Leads') {
+    if (this.isInitializing.has(module)) {
       return;
     }
 
-    this.isInitializing = true;
-    this.module = module;
+    this.isInitializing.add(module);
     
     try {
-      await this.refreshCache();
+      await this.refreshCache(module);
       
-      // Start periodic refresh
-      this.intervalId = setInterval(() => {
-        this.refreshCache();
+      // Clear any existing interval for this module
+      if (this.intervalIds.has(module)) {
+        clearInterval(this.intervalIds.get(module));
+      }
+      
+      // Start periodic refresh for this module
+      const intervalId = setInterval(() => {
+        this.refreshCache(module);
       }, this.refreshInterval);
       
+      this.intervalIds.set(module, intervalId);
+      
     } catch (error) {
-      // Initialization failed
+      console.error(`Failed to initialize field mapping cache for module ${module}:`, error.message);
     } finally {
-      this.isInitializing = false;
+      this.isInitializing.delete(module);
     }
   }
 
-  async refreshCache() {
+  async refreshCache(module = 'Leads') {
     try {
       const config = loadAirtableConfig();
       if (!config) {
         return;
       }
 
-      const fieldMapping = await fetchDynamicFieldMapping(config, this.module);
+      const fieldMapping = await fetchDynamicFieldMapping(config, module);
       if (fieldMapping) {
-        this.cache = fieldMapping;
-        this.lastUpdated = new Date();
+        this.cacheByModule.set(module, fieldMapping);
+        this.lastUpdatedByModule.set(module, new Date());
+        console.log(`Field mapping cache refreshed for module ${module}: ${Object.keys(fieldMapping).length} mappings`);
       }
     } catch (error) {
-      // Refresh failed
+      console.error(`Failed to refresh field mapping cache for module ${module}:`, error.message);
     }
   }
 
-  getFieldMapping() {
-    if (!this.cache) {
+  getFieldMapping(module = 'Leads') {
+    if (!this.cacheByModule.has(module)) {
+      console.warn(`No field mapping cache found for module ${module}`);
       return null;
     }
     
-    return this.cache;
+    return this.cacheByModule.get(module);
   }
 
-  isReady() {
-    return this.cache !== null;
+  isReady(module = 'Leads') {
+    return this.cacheByModule.has(module) && this.cacheByModule.get(module) !== null;
   }
 
-  getStatus() {
+  getStatus(module = null) {
+    if (module) {
+      // Return status for specific module
+      return {
+        initialized: this.cacheByModule.has(module),
+        lastUpdated: this.lastUpdatedByModule.get(module) || null,
+        mappingCount: this.cacheByModule.has(module) ? Object.keys(this.cacheByModule.get(module)).length : 0,
+        refreshInterval: this.refreshInterval,
+        module: module
+      };
+    }
+    
+    // Return status for all modules
+    const moduleStatuses = {};
+    for (const [mod, cache] of this.cacheByModule) {
+      moduleStatuses[mod] = {
+        initialized: true,
+        lastUpdated: this.lastUpdatedByModule.get(mod) || null,
+        mappingCount: Object.keys(cache).length
+      };
+    }
+    
     return {
-      initialized: this.cache !== null,
-      lastUpdated: this.lastUpdated,
-      mappingCount: this.cache ? Object.keys(this.cache).length : 0,
+      modules: moduleStatuses,
       refreshInterval: this.refreshInterval,
-      module: this.module
+      totalModules: this.cacheByModule.size
     };
   }
 
-  destroy() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+  destroyModule(module) {
+    // Clear interval for specific module
+    if (this.intervalIds.has(module)) {
+      clearInterval(this.intervalIds.get(module));
+      this.intervalIds.delete(module);
     }
+    
+    // Clear cache for module
+    this.cacheByModule.delete(module);
+    this.lastUpdatedByModule.delete(module);
+    this.isInitializing.delete(module);
+  }
+
+  destroy() {
+    // Clear all intervals
+    for (const intervalId of this.intervalIds.values()) {
+      clearInterval(intervalId);
+    }
+    
+    // Clear all caches
+    this.intervalIds.clear();
+    this.cacheByModule.clear();
+    this.lastUpdatedByModule.clear();
+    this.isInitializing.clear();
+  }
+
+  // Method to ensure a module is initialized before use
+  async ensureModuleInitialized(module = 'Leads') {
+    if (!this.isReady(module) && !this.isInitializing.has(module)) {
+      await this.initialize(module);
+      
+      // Wait a bit for cache to populate
+      let attempts = 0;
+      while (!this.isReady(module) && attempts < 10) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+    }
+    
+    return this.isReady(module);
   }
 }
 

@@ -100,29 +100,11 @@ async function getFieldMapping(module = 'Leads') {
   return FIELD_MAPPING;
 }
 
-// Load Airtable config with optional module override
-function loadAirtableConfigForModule(moduleName = null) {
-  const baseConfig = loadAirtableConfig();
-  if (!baseConfig || !moduleName) {
-    return baseConfig;
-  }
-
-  // Clone the config to avoid mutating the original
-  const moduleConfig = { ...baseConfig };
-  
-  // Module-specific overrides will be applied by the services
-  // that use getModuleTableConfig from moduleConfigService
-  moduleConfig.currentModule = moduleName;
-  
-  return moduleConfig;
-}
-
 module.exports = {
   FIELD_MAPPING,
   IGNORED_FIELDS,
   loadZohoConfig,
   loadAirtableConfig,
-  loadAirtableConfigForModule,
   saveZohoConfig,
   shouldIgnoreField,
   filterIgnoredFields,
