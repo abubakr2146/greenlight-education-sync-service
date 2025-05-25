@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a two-way sync service between Zoho CRM and Airtable, specifically designed for syncing Leads. The service uses a polling-based architecture to detect changes in both systems and synchronize data based on modification timestamps.
+This is a polling-based two-way sync service between Zoho CRM and Airtable, designed for syncing multiple modules including Leads, Partners, Contacts, and Accounts. The service uses a polling-based architecture to detect changes in both systems and synchronize data based on modification timestamps.
 
 ## Architecture
 
@@ -49,16 +49,60 @@ npm run sync:status
 # Full sync (30 days back)
 npm run sync:full
 
+# Custom time window
+node syncManager.js --since "2024-01-15T10:00:00.000Z"
+
 # Start automatic sync daemon (every minute)
-npm run sync:daemon
+npm run sync:daemon              # Leads only (default)
+npm run sync:daemon:leads        # Leads only
+npm run sync:daemon:leads:verbose # Leads with verbose logging
+npm run sync:daemon:contacts     # Contacts only
+npm run sync:daemon:multi        # Leads, Contacts, Accounts
+npm run sync:daemon:multi:verbose # Multiple modules with verbose
 
-# Daemon with verbose logging
-npm run sync:daemon:verbose
+# Custom modules for daemon
+node syncDaemon.js --modules Leads,Partners
+node syncDaemon.js --modules Leads,Partners --verbose
 
-# Bulk sync operations
-npm run sync:bulk
-npm run sync:bulk:preview    # Dry run
-npm run sync:bulk:verbose   # With detailed logs
+# Custom sync intervals
+node syncDaemon.js --interval "*/2 * * * *"  # Every 2 minutes
+node syncDaemon.js --interval "*/5 * * * *"  # Every 5 minutes
+node syncDaemon.js --interval "0 * * * *"    # Every hour
+```
+
+### Bulk Sync Operations
+
+```bash
+# Bulk sync for specific modules
+npm run sync:bulk                      # Default to Leads
+npm run sync:bulk:leads                # Leads module
+npm run sync:bulk:leads:preview        # Dry run for Leads
+npm run sync:bulk:leads:verbose        # Verbose logging for Leads
+npm run sync:bulk:contacts             # Contacts module
+npm run sync:bulk:contacts:preview     # Dry run for Contacts
+npm run sync:bulk:partners             # Partners module
+npm run sync:bulk:partners:preview     # Dry run for Partners
+
+# Cron-based bulk sync
+npm run sync:cron                      # Default hourly sync
+npm run sync:cron:hourly               # Every hour for Leads & Partners
+npm run sync:cron:daily                # Daily at 2 AM for Leads & Partners
+npm run sync:cron:test                 # Test run with immediate execution
+
+# Custom cron schedules
+node bulkSyncCron.js --modules Leads,Partners --cron "*/30 * * * *"  # Every 30 minutes
+node bulkSyncCron.js --modules Leads,Partners,Contacts --verbose
+node bulkSyncCron.js --dry-run --run-now  # Test without making changes
+```
+
+### Field Mapping Management
+
+```bash
+# Export field mappings
+npm run export:mappings                      # All modules
+npm run export:mappings:preview              # Preview all modules
+npm run export:mappings:leads               # Leads module only
+npm run export:mappings:leads:preview       # Preview Leads mappings
 ```
 
 ### Setup Commands
@@ -86,28 +130,145 @@ npm run refresh-token
 - The system caches these mappings for performance
 - Always ensure field IDs start with "fld" for Airtable fields
 - The mapping format: `{ zohoFieldName: { airtable: 'fldXXXX', zoho: 'Zoho_Field_Name' } }`
+- Check field mapping issues by verifying the "Zoho Fields" table configuration
 
 ### Sync Behavior
 - The service tracks modification timestamps to determine sync direction
 - Conflicts (changes within 1 minute) are resolved with Zoho winning
 - The system prevents sync loops by tracking recent sync operations
 - Deletions are handled with a 24-hour grace period for new records
+- Sync flow: Polling → Compare Modified_Time → Resolve conflicts → Complete sync
 
 ### API Rate Limits
 - Be mindful of both Zoho and Airtable API rate limits
 - The polling service runs every minute by default
 - Bulk operations should use the dedicated bulk sync commands
+- Consider using staggered schedules for multiple modules
 
 ### Error Handling
 - The service continues operation even if individual syncs fail
 - Failed syncs are logged but don't stop the daemon
 - Check logs for specific sync failures
+- Log locations:
+  - Bulk sync logs: `server/logs/bulk-sync/`
+  - Log format: `YYYY-MM-DDTHH-mm-ss-Module.log`
+
+### Daemon Output Indicators
+- `.` = Sync completed, no changes
+- `✓` = Sync completed with successful updates
+- `!` = Sync completed with some failures
+- `X` = Sync failed completely
 
 ## Testing & Debugging
 
 - Use `npm run sync:daemon:verbose` for detailed logging during development
 - The `--dry-run` flag on bulk operations shows what would be synced without making changes
 - Check field mapping status with the `/cache-status` endpoint when server is running
+- Press Ctrl+Z in non-verbose daemon mode to show live stats
+- Debug commands:
+  ```bash
+  # Test cron expression
+  node bulkSyncCron.js --cron "*/5 * * * *" --dry-run --verbose
+  
+  # Check field mappings
+  node bulkSync.js --module Partners --dry-run --verbose
+  
+  # Verify module configuration
+  node testModuleConfig.js Partners
+  ```
+
+## Production Deployment
+
+### Using PM2 (Recommended)
+
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Start bulk sync cron
+pm2 start bulkSyncCron.js --name "bulk-sync" -- --modules Leads,Partners
+
+# Start incremental sync daemon
+pm2 start syncDaemon.js --name "incremental-sync" -- --modules Leads,Partners
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on boot
+pm2 startup
+
+# View logs
+pm2 logs bulk-sync
+pm2 logs incremental-sync
+
+# Monitor
+pm2 monit
+```
+
+### Production Setup Examples
+
+```bash
+# Hourly sync for critical modules
+pm2 start bulkSyncCron.js --name "hourly-sync" -- --modules Leads,Partners --cron "0 * * * *"
+
+# Daily full sync for all modules
+pm2 start bulkSyncCron.js --name "daily-sync" -- --modules Leads,Partners,Contacts,Accounts --cron "0 2 * * *"
+
+# Real-time sync for Leads
+pm2 start syncDaemon.js --name "realtime-leads" -- --modules Leads
+```
+
+### Sync Strategy
+- **Incremental Sync (syncDaemon.js)**: For near real-time updates, polls every minute for recent changes
+- **Bulk Sync (bulkSyncCron.js)**: For full synchronization on schedule (hourly/daily)
+- Can run both simultaneously for different modules
+
+### Cron Expression Examples
+
+| Expression | Description |
+|------------|-------------|
+| `0 * * * *` | Every hour at minute 0 |
+| `*/15 * * * *` | Every 15 minutes |
+| `0 */2 * * *` | Every 2 hours |
+| `0 0 * * *` | Daily at midnight |
+| `0 2 * * *` | Daily at 2 AM |
+| `0 9-17 * * 1-5` | Every hour from 9 AM to 5 PM on weekdays |
+| `0 0 * * 0` | Weekly on Sunday at midnight |
+
+### Best Practices
+1. Run bulk sync during off-peak hours
+2. Start with one module before adding more
+3. Always test with `--dry-run` first
+4. Monitor log file sizes regularly
+5. Set up alerts for sync failures
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Field Mapping Issues**
+   - Check your "Zoho Fields" table in Airtable
+   - Ensure field IDs start with "fld"
+   - Verify field names match exactly
+   - Ensure field types match between systems
+
+2. **API Issues**
+   - Run `npm test` to verify connections
+   - Check token expiry in config files
+   - Verify API permissions
+
+3. **Sync Issues**
+   - Check logs for specific error messages
+   - Ensure required fields are populated
+   - Verify modification timestamps are being updated
+
+4. **Module Not Found Error**
+   - Ensure the module exists in Airtable's "Zoho Modules" table
+   - Check module name spelling (case-sensitive)
+
+5. **Permission Errors**
+   - Ensure the user has write access to log directory
+   - Check file permissions on scripts
 
 ## General Development Guidelines
 

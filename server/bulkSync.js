@@ -53,6 +53,7 @@ class BulkSync {
       markedAirtableAsDeleted: 0
     };
     this.zohoCrmIdAirtableField = null;
+    this.airtableIdFieldFromMapping = null; // Cache for Airtable ID field
     this.airtableLastModifiedField = 'Last Modified Time';
   }
 
@@ -85,6 +86,10 @@ class BulkSync {
       }
       this.zohoCrmIdAirtableField = zohoCrmIdMap.airtable;
       console.log(`ℹ️  Using Airtable field '${this.zohoCrmIdAirtableField}' for Zoho CRM ID.`);
+      
+      // Cache the Airtable ID mapping to avoid repeated lookups
+      const airtableIdMap = await getAirtableIdMapping(this.moduleName);
+      this.airtableIdFieldFromMapping = airtableIdMap?.airtable;
 
       console.log(`📥 Fetching records from both systems...`);
       const [zohoRecords, airtableRecords] = await Promise.all([
@@ -103,7 +108,7 @@ class BulkSync {
       console.log(`📊 Found ${zohoRecords.length} Zoho ${this.moduleName} records, ${airtableRecords.length} Airtable records for ${this.moduleName}\n`);
 
       console.log('📋 Creating sync plan...');
-      const syncPlan = this.createBulkSyncPlan(zohoRecords, airtableRecords);
+      const syncPlan = await this.createBulkSyncPlan(zohoRecords, airtableRecords);
 
       console.log('📈 Sync Plan Summary:');
       console.log(`├─ Zoho → Airtable: ${syncPlan.zohoToAirtable.length}`);
@@ -294,7 +299,95 @@ class BulkSync {
     }
   }
 
-  createBulkSyncPlan(zohoRecords, airtableRecords) {
+  async compareFieldValues(zohoRecord, airtableRecord) {
+    try {
+      await fieldMappingCache.ensureModuleInitialized(this.moduleName);
+      const currentModuleFieldMapping = fieldMappingCache.getFieldMapping(this.moduleName);
+      if (!currentModuleFieldMapping) {
+        console.warn(`[BulkSync][${this.moduleName}] No field mapping available for comparison. Assuming fields have changed.`);
+        return true; // Assume changed if we can't compare
+      }
+
+      const airtableFieldIdToNameMap = await getFieldIdToNameMapping(null, this.moduleName);
+      
+      let hasChanges = false;
+      let checkedFields = 0;
+
+      for (const [zohoFieldMapKey, mapping] of Object.entries(currentModuleFieldMapping)) {
+        if (zohoFieldMapKey === 'ZOHO_ID' || zohoFieldMapKey === 'AIRTABLE_ID') continue;
+        if (!mapping.airtable || !mapping.zoho) continue;
+        
+        // Quick check for ID fields without calling shouldIgnoreField
+        if (mapping.airtable === this.zohoCrmIdAirtableField || 
+            mapping.airtable === this.airtableIdFieldFromMapping ||
+            mapping.zoho.startsWith('$') ||
+            ['Modified_Time', 'Created_Time', 'Modified_By', 'Created_By', 'id', 'Owner'].includes(mapping.zoho)) {
+          continue;
+        }
+
+        let airtableFieldName = mapping.airtable;
+        if (mapping.airtable.startsWith('fld')) {
+          if (airtableFieldIdToNameMap && airtableFieldIdToNameMap[mapping.airtable]) {
+            airtableFieldName = airtableFieldIdToNameMap[mapping.airtable];
+          } else {
+            continue; // Skip if we can't resolve the field name
+          }
+        }
+
+        const zohoValue = zohoRecord.data[mapping.zoho];
+        const airtableValue = airtableRecord.data.fields[airtableFieldName];
+
+        // Normalize values for comparison
+        const normalizedZohoValue = this.normalizeValue(zohoValue);
+        const normalizedAirtableValue = this.normalizeValue(airtableValue);
+
+        if (normalizedZohoValue !== normalizedAirtableValue) {
+          if (this.verbose) {
+            console.log(`   Field '${mapping.zoho}' differs: Zoho='${normalizedZohoValue}' vs Airtable='${normalizedAirtableValue}'`);
+          }
+          hasChanges = true;
+          break; // Exit early if we find any change
+        }
+        checkedFields++;
+      }
+
+      if (this.verbose && !hasChanges) {
+        console.log(`   No changes detected across ${checkedFields} mapped fields for Zoho ${zohoRecord.id}`);
+      }
+
+      return hasChanges;
+    } catch (error) {
+      console.error(`[BulkSync][${this.moduleName}] Error comparing field values:`, error.message);
+      return true; // Assume changed on error
+    }
+  }
+
+  normalizeValue(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'boolean') return value.toString();
+    if (typeof value === 'number') return value.toString();
+    if (Array.isArray(value)) {
+      return value.map(item => {
+        if (typeof item === 'object' && item !== null && item.name) {
+          return item.name;
+        }
+        return String(item);
+      }).join(', ');
+    }
+    if (typeof value === 'object' && value !== null) {
+      if (value.name) return value.name;
+      // For other objects, use JSON string for comparison
+      try {
+        return JSON.stringify(value);
+      } catch (e) {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  async createBulkSyncPlan(zohoRecords, airtableRecords) {
     const plan = {
       zohoToAirtable: [], airtableToZoho: [],
       newAirtableRecords: [], newZohoRecords: [],
@@ -313,10 +406,17 @@ class BulkSync {
         const timeDiff = Math.abs(zohoTime - airtableTime);
         if (timeDiff < 30000) { 
           plan.noSyncNeeded.push({ zoho: zohoRecord, airtable: airtableRecord, reason: 'Timestamps too close' });
-        } else if (zohoTime > airtableTime) {
-          plan.zohoToAirtable.push({ zoho: zohoRecord, airtable: airtableRecord, timeDiff, zohoTime: new Date(zohoTime).toISOString(), airtableTime: new Date(airtableTime).toISOString() });
         } else {
-          plan.airtableToZoho.push({ airtable: airtableRecord, zoho: zohoRecord, timeDiff, zohoTime: new Date(zohoTime).toISOString(), airtableTime: new Date(airtableTime).toISOString() });
+          // Check if field values have actually changed
+          const hasChanges = await this.compareFieldValues(zohoRecord, airtableRecord);
+          
+          if (!hasChanges) {
+            plan.noSyncNeeded.push({ zoho: zohoRecord, airtable: airtableRecord, reason: 'No field changes detected' });
+          } else if (zohoTime > airtableTime) {
+            plan.zohoToAirtable.push({ zoho: zohoRecord, airtable: airtableRecord, timeDiff, zohoTime: new Date(zohoTime).toISOString(), airtableTime: new Date(airtableTime).toISOString() });
+          } else {
+            plan.airtableToZoho.push({ airtable: airtableRecord, zoho: zohoRecord, timeDiff, zohoTime: new Date(zohoTime).toISOString(), airtableTime: new Date(airtableTime).toISOString() });
+          }
         }
       }
     }
@@ -528,10 +628,7 @@ class BulkSync {
         return true;
     }
     
-    const airtableIdMap = await getAirtableIdMapping(this.moduleName);
-    const airtableIdFieldFromMapping = airtableIdMap?.airtable;
-
-    if (airtableFieldName === this.zohoCrmIdAirtableField || airtableFieldName === airtableIdFieldFromMapping) {
+    if (airtableFieldName === this.zohoCrmIdAirtableField || airtableFieldName === this.airtableIdFieldFromMapping) {
         if(this.verbose && airtableFieldName) console.log(`   Ignoring Airtable ID mapping field: ${airtableFieldName}`);
         return true;
     }

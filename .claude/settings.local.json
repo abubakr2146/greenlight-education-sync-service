@@ -17,7 +17,8 @@
       "Bash(rm:*)",
       "Bash(npm run export:mappings:*)",
       "Bash(npm run lint)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }
