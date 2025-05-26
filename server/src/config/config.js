@@ -29,14 +29,23 @@ const IGNORED_FIELDS = {
     'Data_Processing_Basis_Details',
     'Approval',
     'Data_Source',
-    'Process_Flow'
+    'Process_Flow',
+    'Locked__s',
+    'Partner Name',
+    'Email_Opt_Out',
+    
   ],
   airtable: [
     'Last Modified Time',
     'Created Time',
     'Last Modified By',
     'Auto Number',
-    'Record ID'
+    'Record ID',
+    'Locked__s',
+    'Partner Name',
+    'Exchange_Rate',
+    'From_Airtable',
+    'Email_Opt_Out',
   ]
 };
 

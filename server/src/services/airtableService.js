@@ -472,8 +472,16 @@ async function getRecordById(recordId, config = null) {
   }
 }
 
+// Cache for field ID to name mappings by module
+const fieldIdToNameCache = new Map();
+
 // Get complete field ID to name mapping for the table (module-aware)
 async function getFieldIdToNameMapping(config = null, module = 'Leads') {
+  // Check cache first
+  if (fieldIdToNameCache.has(module)) {
+    return fieldIdToNameCache.get(module);
+  }
+
   if (!config) {
     config = loadAirtableConfig();
     if (!config) {
@@ -512,6 +520,9 @@ async function getFieldIdToNameMapping(config = null, module = 'Leads') {
     table.fields.forEach(field => {
       fieldMapping[field.id] = field.name;
     });
+    
+    // Cache the result
+    fieldIdToNameCache.set(module, fieldMapping);
     
     return fieldMapping;
   } catch (error) {

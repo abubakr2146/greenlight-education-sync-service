@@ -116,7 +116,8 @@ async function syncField(params) {
     fieldName, 
     value,
     mapping,
-    module = 'Leads'
+    module = 'Leads',
+    targetRecordId = null // New parameter for known target record ID
   } = params;
 
   if (!mapping || !mapping.zoho || !mapping.airtable) {
@@ -127,7 +128,7 @@ async function syncField(params) {
   if (direction === SYNC_DIRECTIONS.ZOHO_TO_AIRTABLE) {
     // Recording for ZOHO_TO_AIRTABLE is handled within syncFromZohoToAirtable
   } else if (direction === SYNC_DIRECTIONS.AIRTABLE_TO_ZOHO) {
-    const zohoTargetId = await findZohoIdByModuleRecord(sourceId, module);
+    const zohoTargetId = targetRecordId || await findZohoIdByModuleRecord(sourceId, module);
     if (zohoTargetId) {
         recordSyncedValue('zoho', zohoTargetId, mapping.zoho, value);
     } else {
@@ -138,9 +139,9 @@ async function syncField(params) {
   }
 
   if (direction === SYNC_DIRECTIONS.ZOHO_TO_AIRTABLE) {
-    return await syncFromZohoToAirtable(sourceId, fieldName, value, mapping, module);
+    return await syncFromZohoToAirtable(sourceId, fieldName, value, mapping, module, targetRecordId);
   } else if (direction === SYNC_DIRECTIONS.AIRTABLE_TO_ZOHO) {
-    return await syncFromAirtableToZoho(sourceId, fieldName, value, mapping, module);
+    return await syncFromAirtableToZoho(sourceId, fieldName, value, mapping, module, targetRecordId);
   } else {
     console.error(`[SyncService][${module}] Invalid sync direction: ${direction}`);
     throw new Error(`Invalid sync direction: ${direction}`);
@@ -148,9 +149,10 @@ async function syncField(params) {
 }
 
 // Internal function to sync from Zoho to Airtable (module-aware)
-async function syncFromZohoToAirtable(zohoRecordId, zohoFieldName, newValue, mapping, module = 'Leads') {
+async function syncFromZohoToAirtable(zohoRecordId, zohoFieldName, newValue, mapping, module = 'Leads', knownAirtableRecordId = null) {
   try {
-    const airtableRecordId = await findOrCreateAirtableRecord(zohoRecordId, module);
+    // Use the known Airtable record ID if provided, otherwise look it up
+    const airtableRecordId = knownAirtableRecordId || await findOrCreateAirtableRecord(zohoRecordId, module);
     if (!airtableRecordId) {
       console.error(`[SyncService][${module}] Could not find or create Airtable record for Zoho ID ${zohoRecordId}. Sync failed for field ${zohoFieldName}.`);
       return false;
@@ -170,9 +172,9 @@ async function syncFromZohoToAirtable(zohoRecordId, zohoFieldName, newValue, map
 }
 
 // Internal function to sync from Airtable to Zoho (module-aware)
-async function syncFromAirtableToZoho(airtableRecordId, zohoFieldName, newValue, mapping, module = 'Leads') {
+async function syncFromAirtableToZoho(airtableRecordId, zohoFieldName, newValue, mapping, module = 'Leads', knownZohoRecordId = null) {
   try {
-    const zohoRecordId = await findZohoIdByModuleRecord(airtableRecordId, module);
+    const zohoRecordId = knownZohoRecordId || await findZohoIdByModuleRecord(airtableRecordId, module);
     if (!zohoRecordId) {
       // This case should ideally be handled by createZohoRecordFromAirtable if the record is new.
       // If we reach here, it means we expected an existing Zoho record to update.
@@ -207,6 +209,8 @@ async function syncFieldFromAirtableToZoho(airtableRecordId, zohoFieldName, newV
 // Create Airtable record when new Zoho record is created (module-aware)
 async function createAirtableRecordFromZoho(zohoRecordId, zohoRecordData, module = 'Leads') {
   try {
+    const { IGNORED_FIELDS } = require('../config/config');
+    const { getFieldIdToNameMapping } = require('./airtableService');
     const recordDataToCreate = { fields: {} };
     await fieldMappingCache.ensureModuleInitialized(module);
 
@@ -219,10 +223,25 @@ async function createAirtableRecordFromZoho(zohoRecordId, zohoRecordData, module
       console.warn(`[SyncService][${module}] Zoho CRM ID mapping to Airtable not found. Cannot set Zoho ID on new Airtable record.`);
     }
 
+    // Get field ID to name mapping for checking ignored fields
+    const airtableFieldIdToNameMap = await getFieldIdToNameMapping(null, module);
+
     const currentModuleFieldMapping = fieldMappingCache.getFieldMapping(module);
     if (currentModuleFieldMapping) {
       for (const [zohoFieldApiName, mapping] of Object.entries(currentModuleFieldMapping)) {
         if (zohoFieldApiName === 'ZOHO_ID' || zohoFieldApiName === 'AIRTABLE_ID') continue; // Skip special mapping keys
+        
+        // Skip ignored fields - check both by ID and by name
+        let airtableFieldName = mapping.airtable;
+        if (mapping.airtable && mapping.airtable.startsWith('fld') && airtableFieldIdToNameMap[mapping.airtable]) {
+          airtableFieldName = airtableFieldIdToNameMap[mapping.airtable];
+        }
+        
+        if (IGNORED_FIELDS.zoho.includes(zohoFieldApiName) || 
+            IGNORED_FIELDS.airtable.includes(mapping.airtable) ||
+            IGNORED_FIELDS.airtable.includes(airtableFieldName)) {
+          continue;
+        }
 
         if (zohoRecordData[zohoFieldApiName] !== undefined &&
             zohoRecordData[zohoFieldApiName] !== null &&
@@ -351,7 +370,7 @@ async function createZohoRecordFromAirtable(airtableRecordId, airtableRecordData
 }
 
 // Handle Zoho record update - check for field changes and sync (module-aware)
-async function handleZohoRecordUpdate(zohoRecordId, _zohoRecordData, changedFieldsInfo, module = 'Leads') {
+async function handleZohoRecordUpdate(zohoRecordId, _zohoRecordData, changedFieldsInfo, module = 'Leads', knownAirtableRecordId = null) {
   let overallSuccess = true;
   try {
     const syncPromises = [];
@@ -369,7 +388,8 @@ async function handleZohoRecordUpdate(zohoRecordId, _zohoRecordData, changedFiel
               fieldName: zohoFieldApiName,
               value: newValue,
               mapping: mapping,
-              module: module
+              module: module,
+              targetRecordId: knownAirtableRecordId // Pass the known Airtable record ID
             })
           );
         }
@@ -393,7 +413,7 @@ async function handleZohoRecordUpdate(zohoRecordId, _zohoRecordData, changedFiel
 }
 
 // Handle Airtable record update - check for field changes and sync (module-aware)
-async function handleAirtableRecordUpdate(airtableRecordId, changedFieldsInfo, module = 'Leads') {
+async function handleAirtableRecordUpdate(airtableRecordId, changedFieldsInfo, module = 'Leads', knownZohoRecordId = null) {
   let overallSuccess = true; 
   try {
     await fieldMappingCache.ensureModuleInitialized(module);
@@ -440,7 +460,8 @@ async function handleAirtableRecordUpdate(airtableRecordId, changedFieldsInfo, m
               fieldName: mappingDetails.zoho, 
               value: fieldInfo.currentValue,
               mapping: mappingDetails, 
-              module: module
+              module: module,
+              targetRecordId: knownZohoRecordId // Pass the known Zoho record ID
             })
           );
         }

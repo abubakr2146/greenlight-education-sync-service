@@ -242,6 +242,67 @@ pm2 start syncDaemon.js --name "realtime-leads" -- --modules Leads
 4. Monitor log file sizes regularly
 5. Set up alerts for sync failures
 
+## Recent Updates & Known Issues
+
+### Critical Performance Fix (Latest)
+- **Issue**: During bulk sync updates, the system was attempting to create new Airtable records instead of updating existing ones
+- **Cause**: The sync service's `findOrCreateAirtableRecord` function was being called for every field update, and when it couldn't find records (due to lookup issues), it tried to create duplicates
+- **Fix**: Modified bulk sync to pass known record IDs directly to sync functions, avoiding unnecessary lookups and record creation attempts
+  - Updated `handleZohoRecordUpdate`, `syncFromZohoToAirtable`, and `syncFromAirtableToZoho` to accept optional `knownAirtableRecordId`/`knownZohoRecordId` parameters
+  - Modified `bulkSync.js` to pass these IDs when calling sync functions
+- **Impact**: Prevents rate limit errors and duplicate record creation during updates
+
+### Performance Optimizations
+
+1. **Parallel Processing** (batches of 10 records)
+   - Modified `executeBulkSyncPlan` in `bulkSync.js` to use `Promise.all()` for concurrent operations
+   - Processes records in chunks to avoid overwhelming API rate limits
+
+2. **Field Mapping Caching**
+   - Added `fieldIdToNameCache` Map in `airtableService.js` to cache field mappings
+   - Prevents repeated API calls to fetch field mappings during bulk operations
+   - Cache persists for the duration of the process
+
+3. **Field Value Comparison**
+   - Added `compareFieldValues()` and `normalizeValue()` methods in `bulkSync.js`
+   - Skips syncs when field values haven't changed (only timestamps differ)
+   - Reduces unnecessary API calls and sync operations
+
+4. **Progress Tracking**
+   - Real-time progress indicators during bulk sync operations
+   - Shows current record being processed (e.g., "Processing record 5 of 100")
+
+### Implementation Details
+
+#### Bulk Sync for Specific Records
+```bash
+# Sync a single Zoho record
+node bulkSync.js --module Partners --zoho-id 12345678901234567
+
+# Sync a single Airtable record  
+node bulkSync.js --module Partners --airtable-id recXXXXXXXXXXXXXX
+```
+
+#### Field Value Comparison Logic
+The system now compares actual field values before syncing:
+- Empty strings, null, undefined, and "null" are treated as equivalent
+- Number comparisons handle string/number type differences
+- Arrays and objects use JSON.stringify for comparison
+- Only syncs when actual values differ, not just timestamps
+
+### Known Issues
+1. **Multiple API calls per record**: Currently makes one API request per field update instead of batching all fields together
+   - Each field update is a separate PATCH request to Airtable
+   - Could be optimized to update all fields in a single request
+   
+2. **Field mapping lookups**: "Zoho CRM ID mapping not found in dynamic cache" warnings for Partners module
+   - Occurs when field mappings aren't properly configured in Airtable
+   - Non-critical but indicates configuration issues
+   
+3. **Rate limits**: Can hit Airtable's 5 requests/second limit during large syncs
+   - Mitigated by batch processing (10 records at a time)
+   - Consider adding retry logic with exponential backoff
+
 ## Troubleshooting
 
 ### Common Issues
@@ -269,6 +330,11 @@ pm2 start syncDaemon.js --name "realtime-leads" -- --modules Leads
 5. **Permission Errors**
    - Ensure the user has write access to log directory
    - Check file permissions on scripts
+
+6. **Duplicate Record Creation**
+   - If sync tries to create records when it should update, check that Zoho CRM ID field is properly mapped
+   - Verify records have matching Zoho IDs in Airtable
+   - Check for formatting differences in ID fields
 
 ## General Development Guidelines
 
