@@ -209,7 +209,7 @@ async function syncFieldFromAirtableToZoho(airtableRecordId, zohoFieldName, newV
 // Create Airtable record when new Zoho record is created (module-aware)
 async function createAirtableRecordFromZoho(zohoRecordId, zohoRecordData, module = 'Leads') {
   try {
-    const { IGNORED_FIELDS } = require('../config/config');
+    const { shouldIgnoreField } = require('../config/config');
     const { getFieldIdToNameMapping } = require('./airtableService');
     const recordDataToCreate = { fields: {} };
     await fieldMappingCache.ensureModuleInitialized(module);
@@ -237,9 +237,9 @@ async function createAirtableRecordFromZoho(zohoRecordId, zohoRecordData, module
           airtableFieldName = airtableFieldIdToNameMap[mapping.airtable];
         }
         
-        if (IGNORED_FIELDS.zoho.includes(zohoFieldApiName) || 
-            IGNORED_FIELDS.airtable.includes(mapping.airtable) ||
-            IGNORED_FIELDS.airtable.includes(airtableFieldName)) {
+        if (shouldIgnoreField(zohoFieldApiName, 'zoho') || 
+            shouldIgnoreField(mapping.airtable, 'airtable') ||
+            shouldIgnoreField(airtableFieldName, 'airtable')) {
           continue;
         }
 

@@ -6,7 +6,7 @@
  */
 
 const axios = require('axios');
-const { loadZohoConfig, loadAirtableConfig, IGNORED_FIELDS } = require('./src/config/config');
+const { loadZohoConfig, loadAirtableConfig, shouldIgnoreField } = require('./src/config/config');
 const {
   getMultipleRecordDetails,
   getRecordDetails, // For fetching a single Zoho record
@@ -327,11 +327,9 @@ class BulkSync {
         if (zohoFieldMapKey === 'ZOHO_ID' || zohoFieldMapKey === 'AIRTABLE_ID') continue;
         if (!mapping.airtable || !mapping.zoho) continue;
         
-        // Quick check for ID fields without calling shouldIgnoreField
-        if (mapping.airtable === this.zohoCrmIdAirtableField || 
-            mapping.airtable === this.airtableIdFieldFromMapping ||
-            mapping.zoho.startsWith('$') ||
-            ['Modified_Time', 'Created_Time', 'Modified_By', 'Created_By', 'id', 'Owner'].includes(mapping.zoho)) {
+        // Use proper ignore field checking from config
+        if (this.isIdMappingField(mapping.airtable) ||
+            shouldIgnoreField(mapping.zoho, 'zoho')) {
           continue;
         }
 
@@ -534,9 +532,9 @@ class BulkSync {
           airtableFieldName = airtableFieldIdToNameMap[mapping.airtable];
         }
         
-        if (IGNORED_FIELDS.zoho.includes(zohoFieldApiName) || 
-            IGNORED_FIELDS.airtable.includes(mapping.airtable) ||
-            IGNORED_FIELDS.airtable.includes(airtableFieldName)) {
+        if (shouldIgnoreField(zohoFieldApiName, 'zoho') || 
+            shouldIgnoreField(mapping.airtable, 'airtable') ||
+            shouldIgnoreField(airtableFieldName, 'airtable')) {
           continue;
         }
         
@@ -580,8 +578,8 @@ class BulkSync {
         if (mapping.zoho === 'ZOHO_ID' || mapping.zoho === 'AIRTABLE_ID') continue;
         
         // Skip ignored fields
-        if (IGNORED_FIELDS.zoho.includes(mapping.zoho) || 
-            IGNORED_FIELDS.airtable.includes(mapping.airtable)) {
+        if (shouldIgnoreField(mapping.zoho, 'zoho') || 
+            shouldIgnoreField(mapping.airtable, 'airtable')) {
           continue;
         }
         
@@ -791,7 +789,7 @@ class BulkSync {
             const changedFields = [];
             const currentValues = {};
             for (const zohoFieldApiName in item.zoho.data) {
-              if (await this.shouldIgnoreField(zohoFieldApiName, null)) continue;
+              if (shouldIgnoreField(zohoFieldApiName, 'zoho')) continue;
               if (currentModuleFieldMapping[zohoFieldApiName] || Object.values(currentModuleFieldMapping).find(m => m.zoho === zohoFieldApiName)) { 
                 changedFields.push(zohoFieldApiName);
                 currentValues[zohoFieldApiName] = item.zoho.data[zohoFieldApiName];
@@ -871,7 +869,7 @@ class BulkSync {
             
             const changedFieldsInfoArray = [];
             for (const [zohoKey, mapping] of Object.entries(currentModuleFieldMapping)) {
-              if (await this.shouldIgnoreField(mapping.zoho, mapping.airtable)) continue;
+              if (shouldIgnoreField(mapping.zoho, 'zoho') || shouldIgnoreField(mapping.airtable, 'airtable')) continue;
 
               let airtableFieldName = mapping.airtable;
               if (mapping.airtable.startsWith('fld') && airtableFieldIdToNameMap && airtableFieldIdToNameMap[mapping.airtable]) {
@@ -1004,36 +1002,10 @@ class BulkSync {
     console.log(`\n🗑️  Deletion check completed: ${this.stats.deletedZohoRecords} Zoho ${this.moduleName}(s) ${dryRun ? 'would be' : ''} deleted, ${this.stats.markedAirtableAsDeleted} Airtable record(s) ${dryRun ? 'would be' : ''} marked as deleted.`);
   }
 
-  async shouldIgnoreField(zohoFieldName, airtableFieldName) {
-    // Use IGNORED_FIELDS from config.js
-    const ignoredZohoFields = IGNORED_FIELDS.zoho || [];
-    const ignoredAirtableFields = IGNORED_FIELDS.airtable || [];
-    
-    // Additional system fields that start with $ should always be ignored
-    if (zohoFieldName && zohoFieldName.startsWith('$')) {
-        if(this.verbose) console.log(`   Ignoring Zoho system field: ${zohoFieldName}`);
-        return true;
-    }
-    
-    // Check if Zoho field is in the ignored list
-    if (zohoFieldName && ignoredZohoFields.includes(zohoFieldName)) {
-        if(this.verbose) console.log(`   Ignoring Zoho field from config: ${zohoFieldName}`);
-        return true;
-    }
-    
-    // Check if Airtable field is in the ignored list
-    if (airtableFieldName && ignoredAirtableFields.includes(airtableFieldName)) {
-        if(this.verbose) console.log(`   Ignoring Airtable field from config: ${airtableFieldName}`);
-        return true;
-    }
-    
-    // Check for ID mapping fields
-    if (airtableFieldName === this.zohoCrmIdAirtableField || airtableFieldName === this.airtableIdFieldFromMapping) {
-        if(this.verbose && airtableFieldName) console.log(`   Ignoring Airtable ID mapping field: ${airtableFieldName}`);
-        return true;
-    }
-    
-    return false;
+  // Helper method to check if an Airtable field is an ID mapping field (class-specific logic)
+  isIdMappingField(airtableFieldName) {
+    return airtableFieldName === this.zohoCrmIdAirtableField || 
+           airtableFieldName === this.airtableIdFieldFromMapping;
   }
 
   async showDetailedPlan(plan) { 

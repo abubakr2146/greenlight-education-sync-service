@@ -38,7 +38,10 @@ const IGNORED_FIELDS = {
     'From_Airtable',
     'Exchange_Rate',
     'Layout',
-    'Tag'
+    'Tag',
+    'Currency',
+    'Institution',
+'Institution_Record_IDs'
   ],
   airtable: [
     'Last Modified Time',
@@ -52,7 +55,10 @@ const IGNORED_FIELDS = {
     'From_Airtable',
     'Email_Opt_Out',
     'Last_Activity_Time',
-    'Owner'
+    'Owner',
+     'Currency',
+    'Institution',
+    'Institution_Record_IDs'
   ]
 };
 
@@ -92,6 +98,12 @@ function saveZohoConfig(config) {
 // Helper function to check if a field should be ignored
 function shouldIgnoreField(fieldName, system) {
   const ignoredFields = IGNORED_FIELDS[system] || [];
+  
+  // System fields that start with $ should always be ignored (Zoho-specific)
+  if (system === 'zoho' && fieldName && fieldName.startsWith('$')) {
+    return true;
+  }
+  
   return ignoredFields.includes(fieldName);
 }
 

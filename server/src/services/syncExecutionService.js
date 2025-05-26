@@ -12,6 +12,7 @@ const {
   syncFieldFromAirtableToZoho
 } = require('./syncService');
 const fieldMappingCache = require('../utils/fieldMappingCache');
+const { shouldIgnoreField } = require('../config/config');
 
 /**
  * Unified Sync Execution Service
@@ -28,20 +29,6 @@ const SYNC_OPTIONS = {
   createMissing: true      // Create records if they don't exist
 };
 
-// Fields to ignore during sync (computed fields, timestamps, etc.)
-const IGNORED_FIELDS = [
-  'Modified_Time', 'Created_Time', 'Modified_By', 'Created_By', 'id',
-  'smsmagic4__Plain_Phone', 'smsmagic4__Plain_Mobile',
-  'Lead_Conversion_Time', 'Data_Processing_Basis_Details',
-  'Approval', 'Data_Source', 'Process_Flow'
-];
-
-/**
- * Helper function to check if field should be ignored
- */
-function shouldIgnoreField(fieldName) {
-  return IGNORED_FIELDS.includes(fieldName);
-}
 
 /**
  * Helper function to compare values for equality
@@ -106,7 +93,7 @@ async function syncZohoToAirtable(zohoData, options = {}) {
     // Process each mapped field
     for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
       if (leadData[zohoField] === undefined) continue;
-      if (opts.skipIgnoredFields && shouldIgnoreField(zohoField)) continue;
+      if (opts.skipIgnoredFields && shouldIgnoreField(zohoField, 'zoho')) continue;
       
       const zohoValue = leadData[zohoField];
       
@@ -216,7 +203,7 @@ async function syncAirtableToZoho(airtableData, options = {}) {
     
     // Process each mapped field
     for (const [zohoField, mapping] of Object.entries(fieldMapping)) {
-      if (opts.skipIgnoredFields && shouldIgnoreField(zohoField)) continue;
+      if (opts.skipIgnoredFields && shouldIgnoreField(zohoField, 'zoho')) continue;
       
       const airtableFieldId = mapping.airtable;
       const airtableFieldName = fieldIdToName[airtableFieldId] || airtableFieldId;
@@ -278,6 +265,5 @@ module.exports = {
   syncZohoToAirtable,
   syncAirtableToZoho,
   SYNC_OPTIONS,
-  shouldIgnoreField,
   areValuesEqual
 };
