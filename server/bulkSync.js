@@ -765,7 +765,7 @@ class BulkSync {
       await fieldMappingCache.ensureModuleInitialized(this.moduleName);
       const currentModuleFieldMapping = fieldMappingCache.getFieldMapping(this.moduleName);
       
-      const UPDATE_BATCH_SIZE = 100; // Batch size for parallel updates
+      const UPDATE_BATCH_SIZE = 50; // Batch size for parallel updates
       const totalBatches = Math.ceil(plan.zohoToAirtable.length / UPDATE_BATCH_SIZE);
       
       for (let i = 0; i < plan.zohoToAirtable.length; i += UPDATE_BATCH_SIZE) {
@@ -846,7 +846,7 @@ class BulkSync {
       const currentModuleFieldMapping = fieldMappingCache.getFieldMapping(this.moduleName);
       const airtableFieldIdToNameMap = await getFieldIdToNameMapping(null, this.moduleName);
       
-      const UPDATE_BATCH_SIZE = 20; // Batch size for parallel updates
+      const UPDATE_BATCH_SIZE = 100; // Batch size for parallel updates
       const totalBatches = Math.ceil(plan.airtableToZoho.length / UPDATE_BATCH_SIZE);
       
       for (let i = 0; i < plan.airtableToZoho.length; i += UPDATE_BATCH_SIZE) {
