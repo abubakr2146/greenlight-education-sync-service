@@ -33,7 +33,16 @@
     "export:mappings": "node exportFieldMappings.js",
     "export:mappings:preview": "node exportFieldMappings.js --preview",
     "export:mappings:leads": "node exportFieldMappings.js --module Leads",
-    "export:mappings:leads:preview": "node exportFieldMappings.js --module Leads --preview"
+    "export:mappings:leads:preview": "node exportFieldMappings.js --module Leads --preview",
+
+    "duplicates:remove": "node removeDuplicates.js --module Leads",
+    "duplicates:remove:leads": "node removeDuplicates.js --module Leads",
+    "duplicates:remove:leads:preview": "node removeDuplicates.js --module Leads --dry-run",
+    "duplicates:remove:leads:verbose": "node removeDuplicates.js --module Leads --dry-run --verbose",
+    "duplicates:remove:partners": "node removeDuplicates.js --module Partners",
+    "duplicates:remove:partners:preview": "node removeDuplicates.js --module Partners --dry-run",
+    "duplicates:remove:contacts": "node removeDuplicates.js --module Contacts",
+    "duplicates:remove:contacts:preview": "node removeDuplicates.js --module Contacts --dry-run"
   },
   "keywords": [],
   "author": "",

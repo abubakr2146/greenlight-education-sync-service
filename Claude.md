@@ -105,6 +105,23 @@ npm run export:mappings:leads               # Leads module only
 npm run export:mappings:leads:preview       # Preview Leads mappings
 ```
 
+### Duplicate Record Removal
+
+```bash
+# Remove duplicate records (keeps most recent based on modification time)
+npm run duplicates:remove                           # Default to Leads
+npm run duplicates:remove:leads                     # Leads module
+npm run duplicates:remove:leads:preview             # Dry run for Leads (safe preview)
+npm run duplicates:remove:leads:verbose             # Verbose dry run for Leads
+npm run duplicates:remove:partners                  # Partners module
+npm run duplicates:remove:partners:preview          # Dry run for Partners
+npm run duplicates:remove:contacts                  # Contacts module
+npm run duplicates:remove:contacts:preview          # Dry run for Contacts
+
+# Custom options
+node removeDuplicates.js --module Leads --dry-run --verbose
+```
+
 ### Setup Commands
 
 ```bash
