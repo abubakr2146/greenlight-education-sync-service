@@ -159,9 +159,28 @@ async function syncFromZohoToAirtable(zohoRecordId, zohoFieldName, newValue, map
     }
 
     const airtableFieldIdOrName = mapping.airtable; 
-    recordSyncedValue('airtable', airtableRecordId, airtableFieldIdOrName, newValue); 
+    
+    // Handle object values (like lookup fields from Zoho)
+    let processedValue = newValue;
+    if (typeof newValue === 'object' && newValue !== null) {
+      if (newValue.name) {
+        processedValue = newValue.name; 
+      } else if (Array.isArray(newValue)) {
+        processedValue = newValue.map(item => (typeof item === 'object' && item.name) ? item.name : String(item)).join(', ');
+      } else if (mapping.isLookupToString || Object.keys(newValue).length > 0) {
+        if ((zohoFieldName.startsWith('$') || ['Owner', 'Layout'].includes(zohoFieldName)) && !mapping.isLookupToString) {
+          console.log(`[SyncService][${module}] Skipping system field '${zohoFieldName}' with object value`);
+          return true; // Skip this field
+        }
+        processedValue = JSON.stringify(newValue);
+      } else {
+        processedValue = null;
+      }
+    }
+    
+    recordSyncedValue('airtable', airtableRecordId, airtableFieldIdOrName, processedValue); 
 
-    const fieldUpdates = { [airtableFieldIdOrName]: newValue };
+    const fieldUpdates = { [airtableFieldIdOrName]: processedValue };
     await updateModuleRecord(airtableRecordId, fieldUpdates, module);
     //console.log(`[SyncService][${module}] Synced Zoho field '${zohoFieldName}' (ID: ${zohoRecordId}) to Airtable record ${airtableRecordId}, field '${airtableFieldIdOrName}'.`);
     return true;
