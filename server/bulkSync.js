@@ -12,7 +12,9 @@ const {
   getRecordDetails, // For fetching a single Zoho record
   refreshZohoToken,
   deleteZohoRecord,
-  getZohoModulePluralName
+  getZohoModulePluralName,
+  createZohoRecordsBulk,
+  updateZohoRecordsBulk
 } = require('./src/services/zohoService');
 const {
   // getAllModuleRecordsForSync, // Not directly used if fetching all Airtable records via axios
@@ -20,7 +22,9 @@ const {
   findModuleRecordByZohoId,
   updateModuleField,
   getModuleConfig, 
-  getFieldIdToNameMapping
+  getFieldIdToNameMapping,
+  createModuleRecordsBulk,
+  updateModuleRecordsBulk
 } = require('./src/services/airtableService');
 const {
   createAirtableRecordFromZoho,
@@ -509,88 +513,247 @@ class BulkSync {
     return plan;
   }
 
+  // Helper function to prepare Airtable fields from Zoho data (similar to createAirtableRecordFromZoho)
+  async prepareAirtableFieldsFromZoho(zohoRecordId, zohoRecordData) {
+    const fields = {};
+    const currentModuleFieldMapping = this._cachedFieldMapping || fieldMappingCache.getFieldMapping(this.moduleName);
+    const airtableFieldIdToNameMap = this._cachedFieldIdToNameMap || await getFieldIdToNameMapping(null, this.moduleName);
+    
+    // Add Zoho CRM ID
+    if (this.zohoCrmIdAirtableField) {
+      fields[this.zohoCrmIdAirtableField] = zohoRecordId;
+    }
+    
+    if (currentModuleFieldMapping) {
+      for (const [zohoFieldApiName, mapping] of Object.entries(currentModuleFieldMapping)) {
+        if (zohoFieldApiName === 'ZOHO_ID' || zohoFieldApiName === 'AIRTABLE_ID') continue;
+        
+        // Skip ignored fields
+        let airtableFieldName = mapping.airtable;
+        if (mapping.airtable && mapping.airtable.startsWith('fld') && airtableFieldIdToNameMap[mapping.airtable]) {
+          airtableFieldName = airtableFieldIdToNameMap[mapping.airtable];
+        }
+        
+        if (IGNORED_FIELDS.zoho.includes(zohoFieldApiName) || 
+            IGNORED_FIELDS.airtable.includes(mapping.airtable) ||
+            IGNORED_FIELDS.airtable.includes(airtableFieldName)) {
+          continue;
+        }
+        
+        if (zohoRecordData[zohoFieldApiName] !== undefined &&
+            zohoRecordData[zohoFieldApiName] !== null &&
+            mapping.airtable && 
+            (mapping.airtable !== this.zohoCrmIdAirtableField)) {
+          
+          let value = zohoRecordData[zohoFieldApiName];
+          if (typeof value === 'object' && value !== null) {
+            if (value.name) value = value.name;
+            else if (Array.isArray(value)) value = value.map(item => (typeof item === 'object' && item.name) ? item.name : String(item)).join(', ');
+            else if (mapping.isLookupToString || Object.keys(value).length > 0) {
+              if ((zohoFieldApiName.startsWith('$') || ['Owner', 'Layout'].includes(zohoFieldApiName)) && !mapping.isLookupToString) {
+                continue;
+              }
+              value = JSON.stringify(value);
+            } else {
+              value = null;
+            }
+          }
+          if (value !== null && String(value).trim() !== '') {
+            fields[mapping.airtable] = value;
+          }
+        }
+      }
+    }
+    
+    return fields;
+  }
+  
+  // Helper function to prepare Zoho data from Airtable record (similar to createZohoRecordFromAirtable)
+  async prepareZohoDataFromAirtable(airtableRecordId, airtableRecordData) {
+    const zohoData = {};
+    const currentModuleFieldMapping = this._cachedFieldMapping || fieldMappingCache.getFieldMapping(this.moduleName);
+    const airtableFieldIdToNameMap = this._cachedFieldIdToNameMap || await getFieldIdToNameMapping(null, this.moduleName);
+    
+    if (currentModuleFieldMapping) {
+      for (const [_key, mapping] of Object.entries(currentModuleFieldMapping)) {
+        if (!mapping.zoho || !mapping.airtable) continue;
+        if (mapping.zoho === 'ZOHO_ID' || mapping.zoho === 'AIRTABLE_ID') continue;
+        
+        // Skip ignored fields
+        if (IGNORED_FIELDS.zoho.includes(mapping.zoho) || 
+            IGNORED_FIELDS.airtable.includes(mapping.airtable)) {
+          continue;
+        }
+        
+        let airtableFieldName = mapping.airtable;
+        if (mapping.airtable.startsWith('fld') && airtableFieldIdToNameMap[mapping.airtable]) {
+          airtableFieldName = airtableFieldIdToNameMap[mapping.airtable];
+        } else if (mapping.airtable.startsWith('fld')) {
+          continue; // Skip if we can't resolve field name
+        }
+        
+        const airtableValue = airtableRecordData.fields[airtableFieldName];
+        if (airtableValue !== undefined && airtableValue !== null && String(airtableValue).trim() !== '') {
+          zohoData[mapping.zoho] = airtableValue;
+        }
+      }
+    }
+    
+    // Add Airtable ID to Zoho record
+    const airtableIdMapping = await getAirtableIdMapping(this.moduleName);
+    if (airtableIdMapping && airtableIdMapping.zoho) {
+      zohoData[airtableIdMapping.zoho] = airtableRecordId;
+    }
+    
+    return zohoData;
+  }
+
   async executeBulkSyncPlan(plan) {
     let processed = 0;
     const totalOperations = plan.zohoToAirtable.length + plan.airtableToZoho.length + plan.newAirtableRecords.length + plan.newZohoRecords.length;
     
-    // Process new Airtable records in parallel batches
-    const CREATION_BATCH_SIZE = 10; // Batch size for parallel creation
-    console.log(`\n📝 Creating ${plan.newAirtableRecords.length} new Airtable records...`);
-    
-    for (let i = 0; i < plan.newAirtableRecords.length; i += CREATION_BATCH_SIZE) {
-      const batch = plan.newAirtableRecords.slice(i, Math.min(i + CREATION_BATCH_SIZE, plan.newAirtableRecords.length));
+    // CREATE NEW AIRTABLE RECORDS USING BULK API
+    if (plan.newAirtableRecords.length > 0) {
+      console.log(`\n📝 Creating ${plan.newAirtableRecords.length} new Airtable records...`);
       
-      // Process batch in parallel
-      const batchPromises = batch.map(async (zohoRecord, batchIndex) => {
-        const currentIndex = processed + batchIndex + 1;
-        console.log(`[${currentIndex}/${totalOperations}] Creating new Airtable record for Zoho ${this.moduleName} ${zohoRecord.id}`);
-        try {
-          const created = await createAirtableRecordFromZoho(zohoRecord.id, zohoRecord.data, this.moduleName);
-          return { success: !!created, zohoId: zohoRecord.id };
-        } catch (e) {
-          console.error(`Error creating Airtable record: ${e.message}`);
-          return { success: false, zohoId: zohoRecord.id, error: e.message };
-        }
+      // Prepare all records for bulk creation
+      console.log(`   Preparing ${plan.newAirtableRecords.length} record(s) for creation...`);
+      const recordsToCreatePromises = plan.newAirtableRecords.map(async (zohoRecord) => {
+        const fields = await this.prepareAirtableFieldsFromZoho(zohoRecord.id, zohoRecord.data);
+        return { fields, zohoId: zohoRecord.id };
       });
       
-      // Wait for batch to complete
-      const results = await Promise.all(batchPromises);
+      const recordsToCreate = await Promise.all(recordsToCreatePromises);
+      console.log(`   ✅ Prepared ${recordsToCreate.length} records`);
       
-      // Update stats
-      results.forEach(result => {
-        if (result.success) {
-          this.stats.newAirtableRecords++;
-        } else {
-          this.stats.errors++;
+      // Filter out any records with empty fields
+      const validRecords = recordsToCreate.filter(r => {
+        const fieldKeys = Object.keys(r.fields);
+        if (fieldKeys.length === 0 || (fieldKeys.length === 1 && fieldKeys[0] === this.zohoCrmIdAirtableField)) {
+          console.warn(`   ⚠️  Skipping Zoho record ${r.zohoId} - no mappable fields`);
+          this.stats.skipped++;
+          return false;
         }
+        return true;
       });
       
-      processed += batch.length;
-      
-      // Add small delay between batches to avoid rate limits
-      if (i + CREATION_BATCH_SIZE < plan.newAirtableRecords.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-
-    if (!this.specificZohoId && plan.newZohoRecords.length > 0) { // Only create new Zoho records in full bulk mode
-        console.log(`\n📝 Creating ${plan.newZohoRecords.length} new Zoho records...`);
+      if (validRecords.length > 0) {
+        console.log(`   📤 Processing ${validRecords.length} valid records in batches of 10...`);
+        const result = await createModuleRecordsBulk(
+          validRecords.map(r => ({ fields: r.fields })),
+          this.moduleName
+        );
         
-        for (let i = 0; i < plan.newZohoRecords.length; i += CREATION_BATCH_SIZE) {
-          const batch = plan.newZohoRecords.slice(i, Math.min(i + CREATION_BATCH_SIZE, plan.newZohoRecords.length));
-          
-          // Process batch in parallel
-          const batchPromises = batch.map(async (airtableRecord, batchIndex) => {
-            const currentIndex = processed + batchIndex + 1;
-            console.log(`[${currentIndex}/${totalOperations}] Creating new Zoho ${this.moduleName} for Airtable record ${airtableRecord.id}`);
-            try {
-              const created = await createZohoRecordFromAirtable(airtableRecord.id, airtableRecord.data, this.moduleName);
-              return { success: !!created, airtableId: airtableRecord.id };
-            } catch (e) {
-              console.error(`Error creating Zoho record: ${e.message}`);
-              return { success: false, airtableId: airtableRecord.id, error: e.message };
-            }
-          });
-          
-          // Wait for batch to complete
-          const results = await Promise.all(batchPromises);
-          
-          // Update stats
-          results.forEach(result => {
-            if (result.success) {
-              this.stats.newZohoRecords++;
-            } else {
-              this.stats.errors++;
-            }
-          });
-          
-          processed += batch.length;
-          
-          // Add small delay between batches to avoid rate limits
-          if (i + CREATION_BATCH_SIZE < plan.newZohoRecords.length) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+        // Update stats
+        this.stats.newAirtableRecords += result.success.length;
+        this.stats.errors += result.errors.length;
+        
+        // Log results
+        console.log(`   ✅ Successfully created ${result.success.length} Airtable records`);
+        if (result.errors.length > 0) {
+          console.error(`   ❌ Failed to create ${result.errors.length} Airtable records`);
+          if (this.verbose) {
+            result.errors.forEach(err => {
+              console.error(`      Batch ${err.batch}: ${err.error}`);
+            });
           }
         }
+      } else {
+        console.log(`   ⚠️  No valid records to create after filtering`);
+      }
+      
+      processed += plan.newAirtableRecords.length;
+    }
+
+    // CREATE NEW ZOHO RECORDS USING BULK API
+    if (!this.specificZohoId && plan.newZohoRecords.length > 0) { // Only create new Zoho records in full bulk mode
+      console.log(`\n📝 Creating ${plan.newZohoRecords.length} new Zoho ${this.moduleName} records...`);
+      
+      // Prepare all records for bulk creation
+      console.log(`   Preparing ${plan.newZohoRecords.length} record(s) for creation...`);
+      const recordsToCreatePromises = plan.newZohoRecords.map(async (airtableRecord) => {
+        const zohoData = await this.prepareZohoDataFromAirtable(airtableRecord.id, airtableRecord.data);
+        return { data: zohoData, airtableId: airtableRecord.id };
+      });
+      
+      const recordsToCreate = await Promise.all(recordsToCreatePromises);
+      console.log(`   ✅ Prepared ${recordsToCreate.length} records`);
+      
+      // Filter out any records with empty data
+      const validRecords = recordsToCreate.filter(r => {
+        const fieldKeys = Object.keys(r.data);
+        if (fieldKeys.length === 0) {
+          console.warn(`   ⚠️  Skipping Airtable record ${r.airtableId} - no mappable fields`);
+          this.stats.skipped++;
+          return false;
+        }
+        return true;
+      });
+      
+      if (validRecords.length > 0) {
+        console.log(`   📤 Processing ${validRecords.length} valid records in batches of 100...`);
+        const result = await createZohoRecordsBulk(
+          validRecords.map(r => r.data),
+          this.moduleName
+        );
+        
+        // Update stats
+        this.stats.newZohoRecords += result.success.length;
+        this.stats.errors += result.errors.length;
+        
+        // Log results
+        console.log(`   ✅ Successfully created ${result.success.length} Zoho ${this.moduleName} records`);
+        if (result.errors.length > 0) {
+          console.error(`   ❌ Failed to create ${result.errors.length} Zoho records`);
+          if (this.verbose) {
+            result.errors.forEach(err => {
+              if (err.batch !== undefined) {
+                console.error(`      Batch ${err.batch}: ${err.error}`);
+              } else if (err.record) {
+                console.error(`      Record error: ${err.error}`);
+              }
+            });
+          }
+        }
+        
+        // Update Airtable records with the new Zoho IDs
+        if (result.success.length > 0 && this.zohoCrmIdAirtableField) {
+          console.log(`\n🔄 Updating ${result.success.length} Airtable records with new Zoho IDs...`);
+          let updatedCount = 0;
+          for (const zohoResult of result.success) {
+            if (zohoResult.details && zohoResult.details.id && zohoResult.originalData) {
+              // Find the corresponding Airtable record
+              const airtableIdMapping = await getAirtableIdMapping(this.moduleName);
+              const airtableInfo = recordsToCreate.find(r => {
+                // Match by Airtable ID that was sent to Zoho
+                return airtableIdMapping && r.data[airtableIdMapping.zoho] === zohoResult.originalData[airtableIdMapping.zoho];
+              });
+              
+              if (airtableInfo) {
+                try {
+                  await updateModuleField(
+                    airtableInfo.airtableId,
+                    this.zohoCrmIdAirtableField,
+                    zohoResult.details.id,
+                    this.moduleName
+                  );
+                  updatedCount++;
+                  if (this.verbose) {
+                    console.log(`   ✅ Updated Airtable ${airtableInfo.airtableId} with Zoho ID ${zohoResult.details.id}`);
+                  }
+                } catch (e) {
+                  console.error(`   ❌ Failed to update Airtable ${airtableInfo.airtableId}: ${e.message}`);
+                }
+              }
+            }
+          }
+          console.log(`   ✅ Updated ${updatedCount}/${result.success.length} Airtable records with Zoho IDs`);
+        }
+      } else {
+        console.log(`   ⚠️  No valid records to create after filtering`);
+      }
+      
+      processed += plan.newZohoRecords.length;
     }
 
 
@@ -602,18 +765,26 @@ class BulkSync {
       await fieldMappingCache.ensureModuleInitialized(this.moduleName);
       const currentModuleFieldMapping = fieldMappingCache.getFieldMapping(this.moduleName);
       
-      for (let i = 0; i < plan.zohoToAirtable.length; i += CREATION_BATCH_SIZE) {
-        const batch = plan.zohoToAirtable.slice(i, Math.min(i + CREATION_BATCH_SIZE, plan.zohoToAirtable.length));
+      const UPDATE_BATCH_SIZE = 100; // Batch size for parallel updates
+      const totalBatches = Math.ceil(plan.zohoToAirtable.length / UPDATE_BATCH_SIZE);
+      
+      for (let i = 0; i < plan.zohoToAirtable.length; i += UPDATE_BATCH_SIZE) {
+        const batchNumber = Math.floor(i / UPDATE_BATCH_SIZE) + 1;
+        const batch = plan.zohoToAirtable.slice(i, Math.min(i + UPDATE_BATCH_SIZE, plan.zohoToAirtable.length));
+        
+        console.log(`   📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} records)...`);
         
         // Process batch in parallel
         const batchPromises = batch.map(async (item, batchIndex) => {
           const currentIndex = processed + batchIndex + 1;
           const ageMinutes = isNaN(item.timeDiff) ? 'unknown' : Math.round(item.timeDiff / 60000);
-          console.log(`[${currentIndex}/${totalOperations}] Syncing Zoho ${this.moduleName} ${item.zoho.id} → Airtable record ${item.airtable.id} (Zoho ${ageMinutes}min newer)`);
+          if (this.verbose) {
+            console.log(`     [${currentIndex}/${totalOperations}] Syncing Zoho ${this.moduleName} ${item.zoho.id} → Airtable ${item.airtable.id} (Zoho ${ageMinutes}min newer)`);
+          }
           
           try {
             if (!currentModuleFieldMapping) {
-              console.error(`[BulkSync][${this.moduleName}] No field mapping. Cannot sync Zoho ${item.zoho.id}.`);
+              console.error(`     [BulkSync][${this.moduleName}] No field mapping. Cannot sync Zoho ${item.zoho.id}.`);
               return { success: false, zohoId: item.zoho.id, error: 'No field mapping' };
             }
             
@@ -632,7 +803,7 @@ class BulkSync {
             const success = await handleZohoRecordUpdate(item.zoho.id, item.zoho.data, changedFieldsInfo, this.moduleName, item.airtable.id);
             return { success, zohoId: item.zoho.id };
           } catch (e) {
-            console.error(`Error syncing Zoho ${item.zoho.id} to Airtable ${item.airtable.id}: ${e.message}`);
+            console.error(`     Error syncing Zoho ${item.zoho.id} to Airtable ${item.airtable.id}: ${e.message}`);
             if (this.verbose) console.error(e.stack);
             return { success: false, zohoId: item.zoho.id, error: e.message };
           }
@@ -641,7 +812,10 @@ class BulkSync {
         // Wait for batch to complete
         const results = await Promise.all(batchPromises);
         
-        // Update stats
+        // Update stats and show batch results
+        const batchSuccesses = results.filter(r => r.success).length;
+        const batchErrors = results.filter(r => !r.success).length;
+        
         results.forEach(result => {
           if (result.success) {
             this.stats.zohoToAirtable++;
@@ -650,13 +824,17 @@ class BulkSync {
           }
         });
         
+        console.log(`   ✅ Batch ${batchNumber} complete: ${batchSuccesses} success, ${batchErrors} errors`);
+        
         processed += batch.length;
         
         // Add small delay between batches to avoid rate limits
-        if (i + CREATION_BATCH_SIZE < plan.zohoToAirtable.length) {
+        if (i + UPDATE_BATCH_SIZE < plan.zohoToAirtable.length) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
+      
+      console.log(`   ✅ All Zoho → Airtable updates complete: ${this.stats.zohoToAirtable} successful, ${this.stats.errors - (processed - plan.zohoToAirtable.length)} errors`);
     }
 
     // AIRTABLE -> ZOHO UPDATES
@@ -668,18 +846,26 @@ class BulkSync {
       const currentModuleFieldMapping = fieldMappingCache.getFieldMapping(this.moduleName);
       const airtableFieldIdToNameMap = await getFieldIdToNameMapping(null, this.moduleName);
       
-      for (let i = 0; i < plan.airtableToZoho.length; i += CREATION_BATCH_SIZE) {
-        const batch = plan.airtableToZoho.slice(i, Math.min(i + CREATION_BATCH_SIZE, plan.airtableToZoho.length));
+      const UPDATE_BATCH_SIZE = 20; // Batch size for parallel updates
+      const totalBatches = Math.ceil(plan.airtableToZoho.length / UPDATE_BATCH_SIZE);
+      
+      for (let i = 0; i < plan.airtableToZoho.length; i += UPDATE_BATCH_SIZE) {
+        const batchNumber = Math.floor(i / UPDATE_BATCH_SIZE) + 1;
+        const batch = plan.airtableToZoho.slice(i, Math.min(i + UPDATE_BATCH_SIZE, plan.airtableToZoho.length));
+        
+        console.log(`   📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} records)...`);
         
         // Process batch in parallel
         const batchPromises = batch.map(async (item, batchIndex) => {
           const currentIndex = processed + batchIndex + 1;
           const ageMinutes = isNaN(item.timeDiff) ? 'unknown' : Math.round(item.timeDiff / 60000);
-          console.log(`[${currentIndex}/${totalOperations}] Syncing Airtable record ${item.airtable.id} → Zoho ${this.moduleName} ${item.zoho.id} (Airtable ${ageMinutes}min newer)`);
+          if (this.verbose) {
+            console.log(`     [${currentIndex}/${totalOperations}] Syncing Airtable ${item.airtable.id} → Zoho ${this.moduleName} ${item.zoho.id} (Airtable ${ageMinutes}min newer)`);
+          }
           
           try {
             if (!currentModuleFieldMapping) {
-              console.error(`[BulkSync][${this.moduleName}] No field mapping. Cannot sync Airtable ${item.airtable.id}.`);
+              console.error(`     [BulkSync][${this.moduleName}] No field mapping. Cannot sync Airtable ${item.airtable.id}.`);
               return { success: false, airtableId: item.airtable.id, error: 'No field mapping' };
             }
             
@@ -691,7 +877,7 @@ class BulkSync {
               if (mapping.airtable.startsWith('fld') && airtableFieldIdToNameMap && airtableFieldIdToNameMap[mapping.airtable]) {
                 airtableFieldName = airtableFieldIdToNameMap[mapping.airtable];
               } else if (mapping.airtable.startsWith('fld')) {
-                if(this.verbose) console.warn(`   [BulkSync][${this.moduleName}] Airtable field name for ID ${mapping.airtable} not found in map. Skipping field ${mapping.zoho} for A->Z sync of ${item.airtable.id}`);
+                if(this.verbose) console.warn(`     [BulkSync][${this.moduleName}] Airtable field name for ID ${mapping.airtable} not found in map. Skipping field ${mapping.zoho} for A->Z sync of ${item.airtable.id}`);
                 continue; 
               }
               
@@ -704,7 +890,7 @@ class BulkSync {
               
               if (normalizedAirtableValue !== normalizedZohoValue) {
                 if (this.verbose) {
-                  console.log(`   Field '${mapping.zoho}' differs: Airtable='${normalizedAirtableValue}' vs Zoho='${normalizedZohoValue}'`);
+                  console.log(`     Field '${mapping.zoho}' differs: Airtable='${normalizedAirtableValue}' vs Zoho='${normalizedZohoValue}'`);
                 }
                 changedFieldsInfoArray.push({
                   fieldName: airtableFieldName, 
@@ -714,7 +900,9 @@ class BulkSync {
             }
             
             if (changedFieldsInfoArray.length === 0) {
-              console.log(`   No field changes detected between Airtable ${item.airtable.id} and Zoho ${item.zoho.id}. Skipping sync.`);
+              if (this.verbose) {
+                console.log(`     No field changes detected between Airtable ${item.airtable.id} and Zoho ${item.zoho.id}. Skipping sync.`);
+              }
               return { success: true, airtableId: item.airtable.id, skipped: true };
             }
 
@@ -722,7 +910,7 @@ class BulkSync {
             const success = await handleAirtableRecordUpdate(item.airtable.id, changedFieldsInfoArray, this.moduleName, item.zoho.id);
             return { success, airtableId: item.airtable.id };
           } catch (e) {
-            console.error(`Error syncing Airtable ${item.airtable.id} to Zoho ${item.zoho.id}: ${e.message}`);
+            console.error(`     Error syncing Airtable ${item.airtable.id} to Zoho ${item.zoho.id}: ${e.message}`);
             if (this.verbose) console.error(e.stack);
             return { success: false, airtableId: item.airtable.id, error: e.message };
           }
@@ -731,7 +919,11 @@ class BulkSync {
         // Wait for batch to complete
         const results = await Promise.all(batchPromises);
         
-        // Update stats
+        // Update stats and show batch results
+        const batchSuccesses = results.filter(r => r.success && !r.skipped).length;
+        const batchSkipped = results.filter(r => r.skipped).length;
+        const batchErrors = results.filter(r => !r.success).length;
+        
         results.forEach(result => {
           if (result.skipped) {
             this.stats.skipped++;
@@ -742,13 +934,17 @@ class BulkSync {
           }
         });
         
+        console.log(`   ✅ Batch ${batchNumber} complete: ${batchSuccesses} success, ${batchSkipped} skipped, ${batchErrors} errors`);
+        
         processed += batch.length;
         
         // Add small delay between batches to avoid rate limits
-        if (i + CREATION_BATCH_SIZE < plan.airtableToZoho.length) {
+        if (i + UPDATE_BATCH_SIZE < plan.airtableToZoho.length) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
+      
+      console.log(`   ✅ All Airtable → Zoho updates complete: ${this.stats.airtableToZoho} successful, ${this.stats.skipped} skipped, ${this.stats.errors - (this.stats.zohoToAirtable ? 0 : this.stats.errors)} errors`);
     }
   }
 

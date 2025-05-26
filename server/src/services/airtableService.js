@@ -672,6 +672,148 @@ async function updateModuleField(recordId, fieldName, value, module = 'Leads', c
   return updateAirtableField(recordId, fieldName, value, moduleConfig);
 }
 
+// ========== BULK OPERATIONS ==========
+
+// Bulk create Airtable records (max 10 per request)
+// IMPORTANT: recordsData should be array of {fields: {...}} objects
+async function createAirtableRecordsBulk(recordsData, config = null) {
+  if (!recordsData || recordsData.length === 0) return [];
+  
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      console.log(`❌ No Airtable config found`);
+      return [];
+    }
+  }
+  
+  const results = [];
+  const errors = [];
+  const batchSize = 10; // Airtable API limit
+  
+  for (let i = 0; i < recordsData.length; i += batchSize) {
+    const batch = recordsData.slice(i, i + batchSize);
+    
+    try {
+      const url = `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`;
+      const response = await axios.post(
+        url,
+        { records: batch },
+        {
+          headers: {
+            'Authorization': `Bearer ${config.apiToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data && response.data.records) {
+        results.push(...response.data.records);
+      }
+    } catch (error) {
+      console.error(`❌ Batch ${Math.floor(i/batchSize) + 1} failed:`, error.message);
+      if (error.response) {
+        console.error(`❌ Response:`, JSON.stringify(error.response.data, null, 2));
+      }
+      errors.push({
+        batch: Math.floor(i/batchSize) + 1,
+        error: error.message,
+        records: batch
+      });
+    }
+    
+    // Rate limiting: wait 200ms between requests (5 req/sec)
+    if (i + batchSize < recordsData.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+  
+  return { success: results, errors };
+}
+
+// Bulk update Airtable records (max 10 per request)
+// IMPORTANT: updates should be array of {id: recordId, fields: {...}} objects
+async function updateAirtableRecordsBulk(updates, config = null) {
+  if (!updates || updates.length === 0) return [];
+  
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      console.log(`❌ No Airtable config found`);
+      return [];
+    }
+  }
+  
+  const results = [];
+  const errors = [];
+  const batchSize = 10; // Airtable API limit
+  
+  for (let i = 0; i < updates.length; i += batchSize) {
+    const batch = updates.slice(i, i + batchSize);
+    
+    try {
+      const url = `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`;
+      const response = await axios.patch(
+        url,
+        { records: batch },
+        {
+          headers: {
+            'Authorization': `Bearer ${config.apiToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data && response.data.records) {
+        results.push(...response.data.records);
+      }
+    } catch (error) {
+      console.error(`❌ Batch ${Math.floor(i/batchSize) + 1} failed:`, error.message);
+      if (error.response) {
+        console.error(`❌ Response:`, JSON.stringify(error.response.data, null, 2));
+      }
+      errors.push({
+        batch: Math.floor(i/batchSize) + 1,
+        error: error.message,
+        records: batch
+      });
+    }
+    
+    // Rate limiting: wait 200ms between requests (5 req/sec)
+    if (i + batchSize < updates.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+  
+  return { success: results, errors };
+}
+
+// Module-aware bulk create function
+async function createModuleRecordsBulk(recordsData, module = 'Leads', config = null) {
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      return { success: [], errors: [] };
+    }
+  }
+  
+  const moduleConfig = await getModuleConfig(config, module);
+  return createAirtableRecordsBulk(recordsData, moduleConfig);
+}
+
+// Module-aware bulk update function
+async function updateModuleRecordsBulk(updates, module = 'Leads', config = null) {
+  if (!config) {
+    config = loadAirtableConfig();
+    if (!config) {
+      return { success: [], errors: [] };
+    }
+  }
+  
+  const moduleConfig = await getModuleConfig(config, module);
+  return updateAirtableRecordsBulk(updates, moduleConfig);
+}
+
 module.exports = {
   // Core functions (still available for backward compatibility)
   getFieldNames,
@@ -697,6 +839,12 @@ module.exports = {
   getAllModuleRecordsForSync,
   getModuleRecordById,
   updateModuleField,
+  
+  // Bulk operations
+  createAirtableRecordsBulk,
+  updateAirtableRecordsBulk,
+  createModuleRecordsBulk,
+  updateModuleRecordsBulk,
   
   // Helper functions
   getModuleConfig

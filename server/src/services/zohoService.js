@@ -559,6 +559,258 @@ async function deleteZohoLead(leadId, config = null) {
   return deleteZohoRecord(leadId, 'Leads', config);
 }
 
+// ========== BULK OPERATIONS ==========
+
+// Bulk create Zoho records (max 100 per request)
+// IMPORTANT: recordsData should be array of record objects with all required fields
+async function createZohoRecordsBulk(recordsData, module = 'Leads', config = null) {
+  if (!recordsData || recordsData.length === 0) return { success: [], errors: [] };
+  
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      console.log(`❌ No Zoho config found`);
+      return { success: [], errors: [] };
+    }
+  }
+  
+  // Check if token needs refresh
+  if (Date.now() >= config.tokenExpiry) {
+    const refreshed = await refreshZohoToken(config);
+    if (!refreshed) {
+      console.log(`❌ Failed to refresh Zoho token`);
+      return { success: [], errors: [] };
+    }
+  }
+  
+  const results = [];
+  const errors = [];
+  const batchSize = 100; // Zoho API limit
+  const modulePlural = getZohoModulePluralName(module);
+  
+  for (let i = 0; i < recordsData.length; i += batchSize) {
+    const batch = recordsData.slice(i, i + batchSize);
+    
+    try {
+      const response = await axios.post(
+        `${config.apiDomain}/crm/v2/${modulePlural}`,
+        { data: batch },
+        {
+          headers: {
+            'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data && response.data.data) {
+        // Process each record result
+        response.data.data.forEach((result, index) => {
+          if (result.code === 'SUCCESS') {
+            results.push({
+              ...result,
+              originalData: batch[index]
+            });
+          } else {
+            errors.push({
+              record: batch[index],
+              error: result.message || result.code,
+              details: result
+            });
+          }
+        });
+      }
+    } catch (error) {
+      console.error(`❌ Batch ${Math.floor(i/batchSize) + 1} failed:`, error.message);
+      if (error.response) {
+        console.error(`❌ Response:`, JSON.stringify(error.response.data, null, 2));
+      }
+      
+      // If token is invalid, try refreshing once
+      if (error.response?.data?.code === 'INVALID_TOKEN') {
+        const refreshed = await refreshZohoToken(config);
+        if (refreshed) {
+          // Retry this batch
+          try {
+            const retryResponse = await axios.post(
+              `${config.apiDomain}/crm/v2/${modulePlural}`,
+              { data: batch },
+              {
+                headers: {
+                  'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+            
+            if (retryResponse.data && retryResponse.data.data) {
+              retryResponse.data.data.forEach((result, index) => {
+                if (result.code === 'SUCCESS') {
+                  results.push({
+                    ...result,
+                    originalData: batch[index]
+                  });
+                } else {
+                  errors.push({
+                    record: batch[index],
+                    error: result.message || result.code,
+                    details: result
+                  });
+                }
+              });
+            }
+          } catch (retryError) {
+            errors.push({
+              batch: Math.floor(i/batchSize) + 1,
+              error: retryError.message,
+              records: batch
+            });
+          }
+        } else {
+          errors.push({
+            batch: Math.floor(i/batchSize) + 1,
+            error: 'Token refresh failed',
+            records: batch
+          });
+        }
+      } else {
+        errors.push({
+          batch: Math.floor(i/batchSize) + 1,
+          error: error.message,
+          records: batch
+        });
+      }
+    }
+  }
+  
+  return { success: results, errors };
+}
+
+// Bulk update Zoho records (max 100 per request)
+// IMPORTANT: updates should be array of objects with 'id' field and other fields to update
+async function updateZohoRecordsBulk(updates, module = 'Leads', config = null) {
+  if (!updates || updates.length === 0) return { success: [], errors: [] };
+  
+  if (!config) {
+    config = loadZohoConfig();
+    if (!config) {
+      console.log(`❌ No Zoho config found`);
+      return { success: [], errors: [] };
+    }
+  }
+  
+  // Check if token needs refresh
+  if (Date.now() >= config.tokenExpiry) {
+    const refreshed = await refreshZohoToken(config);
+    if (!refreshed) {
+      console.log(`❌ Failed to refresh Zoho token`);
+      return { success: [], errors: [] };
+    }
+  }
+  
+  const results = [];
+  const errors = [];
+  const batchSize = 100; // Zoho API limit
+  const modulePlural = getZohoModulePluralName(module);
+  
+  for (let i = 0; i < updates.length; i += batchSize) {
+    const batch = updates.slice(i, i + batchSize);
+    
+    try {
+      const response = await axios.put(
+        `${config.apiDomain}/crm/v2/${modulePlural}`,
+        { data: batch },
+        {
+          headers: {
+            'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data && response.data.data) {
+        // Process each record result
+        response.data.data.forEach((result, index) => {
+          if (result.code === 'SUCCESS') {
+            results.push({
+              ...result,
+              originalData: batch[index]
+            });
+          } else {
+            errors.push({
+              record: batch[index],
+              error: result.message || result.code,
+              details: result
+            });
+          }
+        });
+      }
+    } catch (error) {
+      console.error(`❌ Batch ${Math.floor(i/batchSize) + 1} failed:`, error.message);
+      if (error.response) {
+        console.error(`❌ Response:`, JSON.stringify(error.response.data, null, 2));
+      }
+      
+      // If token is invalid, try refreshing once
+      if (error.response?.data?.code === 'INVALID_TOKEN') {
+        const refreshed = await refreshZohoToken(config);
+        if (refreshed) {
+          // Retry this batch
+          try {
+            const retryResponse = await axios.put(
+              `${config.apiDomain}/crm/v2/${modulePlural}`,
+              { data: batch },
+              {
+                headers: {
+                  'Authorization': `Zoho-oauthtoken ${config.accessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+            
+            if (retryResponse.data && retryResponse.data.data) {
+              retryResponse.data.data.forEach((result, index) => {
+                if (result.code === 'SUCCESS') {
+                  results.push({
+                    ...result,
+                    originalData: batch[index]
+                  });
+                } else {
+                  errors.push({
+                    record: batch[index],
+                    error: result.message || result.code,
+                    details: result
+                  });
+                }
+              });
+            }
+          } catch (retryError) {
+            errors.push({
+              batch: Math.floor(i/batchSize) + 1,
+              error: retryError.message,
+              records: batch
+            });
+          }
+        } else {
+          errors.push({
+            batch: Math.floor(i/batchSize) + 1,
+            error: 'Token refresh failed',
+            records: batch
+          });
+        }
+      } else {
+        errors.push({
+          batch: Math.floor(i/batchSize) + 1,
+          error: error.message,
+          records: batch
+        });
+      }
+    }
+  }
+  
+  return { success: results, errors };
+}
+
 module.exports = {
   // Core functions
   refreshZohoToken,
@@ -572,6 +824,10 @@ module.exports = {
   getRecordsModifiedSince,
   getMultipleRecordDetails,
   deleteZohoRecord,
+  
+  // Bulk operations
+  createZohoRecordsBulk,
+  updateZohoRecordsBulk,
   
   // Legacy functions for backward compatibility
   getLeadDetails,
