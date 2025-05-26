@@ -43,6 +43,7 @@ class BulkSync {
     this.specificZohoId = options.zohoId || null; // New option
     this.dryRun = options.dryRun || false;
     this.verbose = options.verbose || false;
+    this.noDelete = options.noDelete || false;
     this.stats = {
       totalZohoRecords: 0,
       totalAirtableRecords: 0,
@@ -125,10 +126,14 @@ class BulkSync {
       if (this.dryRun) {
         console.log('🔍 DRY RUN - No changes will be made\n');
         await this.showDetailedPlan(syncPlan);
-        if (!this.specificZohoId) { // Only run deletion checks in full bulk mode
+        if (!this.specificZohoId && !this.noDelete) { // Only run deletion checks in full bulk mode and when not disabled
             await this.performDeletionChecks(zohoRecords, airtableRecords, true);
         } else {
-            console.log("ℹ️ Deletion checks skipped for single record sync.");
+            if (this.specificZohoId) {
+                console.log("ℹ️ Deletion checks skipped for single record sync.");
+            } else if (this.noDelete) {
+                console.log("ℹ️ Deletion checks skipped (--no-delete flag).");
+            }
         }
         this.showResults();
         return;
@@ -137,11 +142,15 @@ class BulkSync {
       console.log('⚡ Executing sync plan...');
       await this.executeBulkSyncPlan(syncPlan);
 
-      if (!this.specificZohoId) { // Only run deletion checks in full bulk mode
+      if (!this.specificZohoId && !this.noDelete) { // Only run deletion checks in full bulk mode and when not disabled
         console.log('\n🗑️  Performing deletion checks...');
         await this.performDeletionChecks(zohoRecords, airtableRecords, false);
       } else {
-        console.log("\nℹ️ Deletion checks skipped for single record sync.");
+        if (this.specificZohoId) {
+            console.log("\nℹ️ Deletion checks skipped for single record sync.");
+        } else if (this.noDelete) {
+            console.log("\nℹ️ Deletion checks skipped (--no-delete flag).");
+        }
       }
 
       this.showResults();
@@ -1072,6 +1081,8 @@ function parseArgs() {
       i++;
     } else if (args[i] === '--dry-run') {
       options.dryRun = true;
+    } else if (args[i] === '--no-delete') {
+      options.noDelete = true;
     } else if (args[i] === '--verbose' || args[i] === '-v') {
       options.verbose = true;
     } else if (args[i] === '--help' || args[i] === '-h') {

@@ -65,9 +65,9 @@ node syncDaemon.js --modules Leads,Partners
 node syncDaemon.js --modules Leads,Partners --verbose
 
 # Custom sync intervals
-node syncDaemon.js --interval "*/2 * * * *"  # Every 2 minutes
-node syncDaemon.js --interval "*/5 * * * *"  # Every 5 minutes
-node syncDaemon.js --interval "0 * * * *"    # Every hour
+node syncDaemon.js --frequency "*/2 * * * *"  # Every 2 minutes
+node syncDaemon.js --frequency "*/5 * * * *"  # Every 5 minutes
+node syncDaemon.js --frequency "0 * * * *"    # Every hour
 ```
 
 ### Bulk Sync Operations
@@ -142,11 +142,13 @@ npm run refresh-token
 
 ## Important Development Notes
 
-### Field Mapping
+### Field Mapping & Ignore Logic
 - Field mappings are loaded dynamically from Airtable's "Zoho Fields" table
-- The system caches these mappings for performance
+- The system caches these mappings for performance using `fieldMappingCache`
+- Field ignore logic is centralized in `src/config/config.js` via `shouldIgnoreField(fieldName, system)`
 - Always ensure field IDs start with "fld" for Airtable fields
 - The mapping format: `{ zohoFieldName: { airtable: 'fldXXXX', zoho: 'Zoho_Field_Name' } }`
+- Zoho system fields starting with '$' are automatically ignored
 - Check field mapping issues by verifying the "Zoho Fields" table configuration
 
 ### Sync Behavior
@@ -202,11 +204,11 @@ npm run refresh-token
 # Install PM2 globally
 npm install -g pm2
 
-# Start bulk sync cron
-pm2 start bulkSyncCron.js --name "bulk-sync" -- --modules Leads,Partners
+# Start bulk sync daemon (recommended)
+pm2 start syncDaemon.js --name "bulk-sync-daemon" -- --modules Leads,Partners
 
-# Start incremental sync daemon
-pm2 start syncDaemon.js --name "incremental-sync" -- --modules Leads,Partners
+# Start bulk sync daemon with custom frequency
+pm2 start syncDaemon.js --name "bulk-sync-5min" -- --modules Leads,Partners --frequency "*/5 * * * *"
 
 # Save PM2 configuration
 pm2 save
@@ -215,8 +217,8 @@ pm2 save
 pm2 startup
 
 # View logs
-pm2 logs bulk-sync
-pm2 logs incremental-sync
+pm2 logs bulk-sync-daemon
+pm2 logs bulk-sync-5min
 
 # Monitor
 pm2 monit
@@ -226,19 +228,20 @@ pm2 monit
 
 ```bash
 # Hourly sync for critical modules
-pm2 start bulkSyncCron.js --name "hourly-sync" -- --modules Leads,Partners --cron "0 * * * *"
+pm2 start syncDaemon.js --name "hourly-sync" -- --modules Leads,Partners --frequency "0 * * * *"
 
 # Daily full sync for all modules
-pm2 start bulkSyncCron.js --name "daily-sync" -- --modules Leads,Partners,Contacts,Accounts --cron "0 2 * * *"
+pm2 start syncDaemon.js --name "daily-sync" -- --modules Leads,Partners,Contacts,Accounts --frequency "0 2 * * *"
 
-# Real-time sync for Leads
-pm2 start syncDaemon.js --name "realtime-leads" -- --modules Leads
+# Real-time sync for Leads (every minute)
+pm2 start syncDaemon.js --name "realtime-leads" -- --modules Leads --frequency "* * * * *"
 ```
 
 ### Sync Strategy
-- **Incremental Sync (syncDaemon.js)**: For near real-time updates, polls every minute for recent changes
-- **Bulk Sync (bulkSyncCron.js)**: For full synchronization on schedule (hourly/daily)
-- Can run both simultaneously for different modules
+- **Bulk Sync Daemon (syncDaemon.js)**: Uses bulkSync.js for complete record synchronization at configurable intervals
+- **Incremental Sync (pollingService.js)**: For near real-time updates, polls every minute for recent changes (legacy approach)
+- **Bulk Sync Scripts (bulkSync.js)**: Direct bulk synchronization for specific modules
+- Can run multiple daemons simultaneously for different modules and frequencies
 
 ### Cron Expression Examples
 
@@ -261,7 +264,21 @@ pm2 start syncDaemon.js --name "realtime-leads" -- --modules Leads
 
 ## Recent Updates & Known Issues
 
-### Critical Performance Fix (Latest)
+### Field Ignore Logic Centralization (Latest)
+- **Issue**: Field ignore logic was scattered across multiple files with hardcoded checks
+- **Fix**: Centralized all field ignore logic in `src/config/config.js` via `shouldIgnoreField(fieldName, system)`
+  - Enhanced function to handle Zoho system fields starting with '$'
+  - Updated all sync services to use centralized function
+  - Removed duplicate implementations across `syncService.js`, `syncExecutionService.js`, and `bulkSync.js`
+- **Impact**: Consistent field filtering behavior across entire codebase
+
+### New Bulk Sync Daemon
+- **Enhancement**: Created new `syncDaemon.js` that uses the latest `bulkSync.js` implementation
+- **Features**: Configurable modules (`--modules`) and frequency (`--frequency`) variables
+- **Benefits**: No deletion logic, uses centralized field ignore logic, full PM2 compatibility
+- **Usage**: `node syncDaemon.js --modules Leads,Partners --frequency "*/5 * * * *"`
+
+### Critical Performance Fix
 - **Issue**: During bulk sync updates, the system was attempting to create new Airtable records instead of updating existing ones
 - **Cause**: The sync service's `findOrCreateAirtableRecord` function was being called for every field update, and when it couldn't find records (due to lookup issues), it tried to create duplicates
 - **Fix**: Modified bulk sync to pass known record IDs directly to sync functions, avoiding unnecessary lookups and record creation attempts
