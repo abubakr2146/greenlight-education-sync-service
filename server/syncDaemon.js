@@ -24,6 +24,7 @@ class SyncDaemon {
     this.frequency = options.frequency || '* * * * *'; // Frequency variable (default: every minute)
     this.verbose = options.verbose || false;
     this.dryRun = options.dryRun || false;
+    this.noDelete = options.noDelete || false;
     
     // Runtime state
     this.isRunning = false;
@@ -64,6 +65,7 @@ class SyncDaemon {
       console.log(`🔄 Modules: ${this.modules.join(', ')}`);
       console.log(`📊 Verbose logging: ${this.verbose ? 'ON' : 'OFF'}`);
       console.log(`🧪 Dry run mode: ${this.dryRun ? 'ON' : 'OFF'}`);
+      console.log(`🗑️ Delete operations: ${this.noDelete ? 'OFF' : 'ON'}`);
 
       // Validate cron expression
       if (!cron.validate(this.frequency)) {
@@ -211,6 +213,7 @@ class SyncDaemon {
       const args = ['--module', moduleName];
       
       if (this.dryRun) args.push('--dry-run');
+      if (this.noDelete) args.push('--no-delete');
       if (this.verbose) args.push('--verbose');
 
       const child = spawn('node', [bulkSyncPath, ...args], {
@@ -350,6 +353,8 @@ function parseArgs() {
       options.verbose = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--no-delete') {
+      options.noDelete = true;
     } else if (arg === '--frequency' || arg === '-f') {
       if (args[i + 1]) {
         options.frequency = args[i + 1];
@@ -389,6 +394,7 @@ Options:
   --frequency, -f "cron"       Cron expression for sync frequency (e.g., "*/5 * * * *"). Defaults to every minute.
   --verbose, -v                Enable detailed logging.
   --dry-run                    Preview mode - shows what would be synced without making changes.
+  --no-delete                  Skip deletion checks and operations.
   --help, -h                   Show this help message.
 
 Examples:
