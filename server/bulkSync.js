@@ -1088,12 +1088,13 @@ function parseArgs() {
     } else if (args[i] === '--help' || args[i] === '-h') {
       console.log(`
 🚀 Bulk Sync Usage:
-  node bulkSync.js [--module ModuleName] [--zoho-id ZohoRecordId] [--dry-run] [--verbose | -v] [--help | -h]
+  node bulkSync.js [--module ModuleName] [--zoho-id ZohoRecordId] [--dry-run] [--no-delete] [--verbose | -v] [--help | -h]
 
 Options:
   --module <ModuleName>    Specify the Zoho module to sync (e.g., Leads, Contacts). Defaults to 'Leads'.
   --zoho-id <ZohoRecordId> Sync only this specific Zoho record ID for the given module.
   --dry-run                Preview changes without executing.
+  --no-delete              Skip deletion checks and operations.
   --verbose, -v            Detailed logging.
   --help, -h               Show this help message.
 
@@ -1102,6 +1103,7 @@ Examples:
   node bulkSync.js --module Contacts                     # Full sync for Contacts module
   node bulkSync.js --module Leads --zoho-id 123456789    # Sync specific Lead ID 123456789
   node bulkSync.js --module Accounts --dry-run           # Dry run for Accounts module
+  node bulkSync.js --module Partners --no-delete        # Sync Partners without deletion checks
 `);
       process.exit(0);
     }
