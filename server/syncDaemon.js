@@ -291,6 +291,7 @@ class SyncDaemon {
     console.log(`  ├─ Frequency: ${this.frequency}`);
     console.log(`  ├─ Modules: ${this.modules.join(', ')}`);
     console.log(`  ├─ Dry Run: ${this.dryRun ? 'ON' : 'OFF'}`);
+    console.log(`  ├─ Delete Operations: ${this.noDelete ? 'OFF' : 'ON'}`);
     console.log(`  ├─ Total Runs: ${this.stats.totalRuns}`);
     console.log(`  └─ Last Error: ${this.stats.lastError || 'None'}`);
   }
@@ -402,6 +403,7 @@ Examples:
   node syncDaemon.js --modules Leads,Contacts            # Sync multiple modules every minute
   node syncDaemon.js --frequency "*/5 * * * *" -v        # Sync every 5 minutes with verbose logging
   node syncDaemon.js --modules Partners --dry-run        # Preview Partners sync every minute
+  node syncDaemon.js --modules Leads,Partners --no-delete # Sync without deletion operations
 
 Cron Format: <minute> <hour> <day_of_month> <month> <day_of_week>
   "*/1 * * * *"  = Every minute
