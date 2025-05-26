@@ -33,7 +33,12 @@ const IGNORED_FIELDS = {
     'Locked__s',
     'Partner Name',
     'Email_Opt_Out',
-    
+    'Last_Activity_Time',
+    'Owner',
+    'From_Airtable',
+    'Exchange_Rate',
+    'Layout',
+    'Tag'
   ],
   airtable: [
     'Last Modified Time',
@@ -46,6 +51,8 @@ const IGNORED_FIELDS = {
     'Exchange_Rate',
     'From_Airtable',
     'Email_Opt_Out',
+    'Last_Activity_Time',
+    'Owner'
   ]
 };
 

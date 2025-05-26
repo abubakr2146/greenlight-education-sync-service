@@ -163,7 +163,7 @@ async function syncFromZohoToAirtable(zohoRecordId, zohoFieldName, newValue, map
 
     const fieldUpdates = { [airtableFieldIdOrName]: newValue };
     await updateModuleRecord(airtableRecordId, fieldUpdates, module);
-    console.log(`[SyncService][${module}] Synced Zoho field '${zohoFieldName}' (ID: ${zohoRecordId}) to Airtable record ${airtableRecordId}, field '${airtableFieldIdOrName}'.`);
+    //console.log(`[SyncService][${module}] Synced Zoho field '${zohoFieldName}' (ID: ${zohoRecordId}) to Airtable record ${airtableRecordId}, field '${airtableFieldIdOrName}'.`);
     return true;
   } catch (error) {
     console.error(`[SyncService][${module}] Error syncing Zoho field '${zohoFieldName}' (ID: ${zohoRecordId}) to Airtable: ${error.message}`, error.stack);

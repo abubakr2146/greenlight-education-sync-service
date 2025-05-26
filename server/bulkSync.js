@@ -6,7 +6,7 @@
  */
 
 const axios = require('axios');
-const { loadZohoConfig, loadAirtableConfig } = require('./src/config/config');
+const { loadZohoConfig, loadAirtableConfig, IGNORED_FIELDS } = require('./src/config/config');
 const {
   getMultipleRecordDetails,
   getRecordDetails, // For fetching a single Zoho record
@@ -696,7 +696,16 @@ class BulkSync {
               }
               
               const airtableValue = item.airtable.data.fields[airtableFieldName];
-              if (airtableValue !== undefined) { 
+              const zohoValue = item.zoho.data[mapping.zoho];
+              
+              // Compare normalized values to check if they're actually different
+              const normalizedAirtableValue = this.normalizeValue(airtableValue);
+              const normalizedZohoValue = this.normalizeValue(zohoValue);
+              
+              if (normalizedAirtableValue !== normalizedZohoValue) {
+                if (this.verbose) {
+                  console.log(`   Field '${mapping.zoho}' differs: Airtable='${normalizedAirtableValue}' vs Zoho='${normalizedZohoValue}'`);
+                }
                 changedFieldsInfoArray.push({
                   fieldName: airtableFieldName, 
                   currentValue: airtableValue
@@ -705,8 +714,8 @@ class BulkSync {
             }
             
             if (changedFieldsInfoArray.length === 0) {
-              if(this.verbose) console.log(`   No mappable fields with values found to sync from Airtable ${item.airtable.id} to Zoho ${item.zoho.id}.`);
-              return { success: false, airtableId: item.airtable.id, skipped: true };
+              console.log(`   No field changes detected between Airtable ${item.airtable.id} and Zoho ${item.zoho.id}. Skipping sync.`);
+              return { success: true, airtableId: item.airtable.id, skipped: true };
             }
 
             // Pass the known Zoho record ID to avoid unnecessary lookups
@@ -800,32 +809,34 @@ class BulkSync {
   }
 
   async shouldIgnoreField(zohoFieldName, airtableFieldName) {
-    const ignoredZohoFields = [
-      'Modified_Time', 'Created_Time', 'Modified_By', 'Created_By', 'id',
-      'CurrencySymbol', '$currency_symbol', 'Exchange_Rate', '$exchange_rate',
-      'Last_Activity_Time', 'Layout', '$layout', 'Lead_Conversion_Time', 
-      'Data_Processing_Basis_Details', 'Approval', 'Process_Flow', '$process_flow', 
-      '$approved', '$approval', '$editable', '$review_process', '$review', 
-      '$zia_assign_time', '$in_merge', '$locked_for_me', '$lock_source_s', 
-      '$orchestration', '$converted', '$converted_detail', '$zia_owner_assignment', 
-      '$zia_visit_count', '$zia_visit_source', '$zia_contact_source', 
-      '$zia_event_source', '$zia_event_name', '$zia_event_description', 
-      '$zia_event_timestamp', 'Tag', 'Owner'
-    ];
-     if (ignoredZohoFields.includes(zohoFieldName) || (zohoFieldName && zohoFieldName.startsWith('$'))) {
-        if(this.verbose && zohoFieldName) console.log(`   Ignoring Zoho system field: ${zohoFieldName}`);
+    // Use IGNORED_FIELDS from config.js
+    const ignoredZohoFields = IGNORED_FIELDS.zoho || [];
+    const ignoredAirtableFields = IGNORED_FIELDS.airtable || [];
+    
+    // Additional system fields that start with $ should always be ignored
+    if (zohoFieldName && zohoFieldName.startsWith('$')) {
+        if(this.verbose) console.log(`   Ignoring Zoho system field: ${zohoFieldName}`);
         return true;
     }
     
+    // Check if Zoho field is in the ignored list
+    if (zohoFieldName && ignoredZohoFields.includes(zohoFieldName)) {
+        if(this.verbose) console.log(`   Ignoring Zoho field from config: ${zohoFieldName}`);
+        return true;
+    }
+    
+    // Check if Airtable field is in the ignored list
+    if (airtableFieldName && ignoredAirtableFields.includes(airtableFieldName)) {
+        if(this.verbose) console.log(`   Ignoring Airtable field from config: ${airtableFieldName}`);
+        return true;
+    }
+    
+    // Check for ID mapping fields
     if (airtableFieldName === this.zohoCrmIdAirtableField || airtableFieldName === this.airtableIdFieldFromMapping) {
         if(this.verbose && airtableFieldName) console.log(`   Ignoring Airtable ID mapping field: ${airtableFieldName}`);
         return true;
     }
-    const ignoredAirtableSystemLikeFields = ['Last Modified Time', 'Created Time', 'Record ID', 'Formatted Name']; 
-    if (airtableFieldName && ignoredAirtableSystemLikeFields.includes(airtableFieldName)) {
-        if(this.verbose) console.log(`   Ignoring Airtable system-like field: ${airtableFieldName}`);
-        return true;
-    }
+    
     return false;
   }
 
