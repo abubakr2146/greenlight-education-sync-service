@@ -40,7 +40,7 @@ const IGNORED_FIELDS = {
     'Layout',
     'Tag',
     'Currency',
- 
+ 'Institution',
 'Institution_Record_IDs'
   ],
   airtable: [
@@ -57,7 +57,7 @@ const IGNORED_FIELDS = {
     'Last_Activity_Time',
     'Owner',
      'Currency',
- 
+  'Institution',
     'Institution_Record_IDs'
   ]
 };
