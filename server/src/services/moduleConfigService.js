@@ -212,7 +212,9 @@ async function getZohoModulePluralName(moduleName) {
     'Case': 'Cases',
     'Cases': 'Cases',
     'Solution': 'Solutions',
-    'Solutions': 'Solutions'
+    'Solutions': 'Solutions',
+    'Student': 'Students',
+    'Students': 'Students'
   };
 
   // If we have a known plural form, use it
