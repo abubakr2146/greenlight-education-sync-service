@@ -105,7 +105,9 @@ async function getModuleTableConfig(moduleName, config = null) {
   
   const tableConfig = {
     tableName: module.fields['Airtable Table Name'] || moduleName,
-    tableId: module.fields['Airtable Table ID'],
+    tableId: Array.isArray(module.fields['Airtable Table ID']) 
+      ? module.fields['Airtable Table ID'][0] 
+      : module.fields['Airtable Table ID'],
     zohoModuleName: module.fields['api_name'],
     moduleRecordId: module.id
   };
@@ -214,7 +216,8 @@ async function getZohoModulePluralName(moduleName) {
     'Solution': 'Solutions',
     'Solutions': 'Solutions',
     'Student': 'Students',
-    'Students': 'Students'
+    'Students': 'Students',
+    'Calls_Meetings': 'Calls_Meetings'
   };
 
   // If we have a known plural form, use it

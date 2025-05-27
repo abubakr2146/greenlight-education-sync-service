@@ -44,6 +44,7 @@ const IGNORED_FIELDS = {
     "Institution_Record_IDs",
     "City",
     "State",
+    "Add_Additional_Participants"
    
 
   ],
@@ -65,6 +66,7 @@ const IGNORED_FIELDS = {
     "Institution_Record_IDs",
     "City",
     "State",
+    "Add_Additional_Participants"
    
   ],
 };

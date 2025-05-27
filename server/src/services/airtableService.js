@@ -94,7 +94,7 @@ async function updateAirtableRecord(recordId, fieldUpdates, config = null) {
 
   try {
     const response = await axios.patch(
-      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}/${recordId}`,
+      `${config.apiUrl}/${config.baseId}/${config.tableId}/${recordId}`,
       {
         fields: fieldUpdates
       },
@@ -123,7 +123,7 @@ async function createAirtableRecord(recordData, config = null) {
   }
 
   try {
-    const url = `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`;
+    const url = `${config.apiUrl}/${config.baseId}/${config.tableId}`;
     
     const response = await axios.post(url, recordData, {
       headers: {
@@ -155,7 +155,7 @@ async function findAirtableRecordByZohoId(zohoLeadId, config = null) {
   try {
     // Search for records where "Zoho CRM ID" field equals the Zoho lead ID
     const response = await axios.get(
-      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`,
+      `${config.apiUrl}/${config.baseId}/${config.tableId}`,
       {
         headers: {
           'Authorization': `Bearer ${config.apiToken}`,
@@ -190,7 +190,7 @@ async function findZohoLeadByAirtableId(airtableRecordId, config = null) {
   try {
     // Get the specific Airtable record to read the "Zoho CRM ID" field
     const response = await axios.get(
-      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}/${airtableRecordId}`,
+      `${config.apiUrl}/${config.baseId}/${config.tableId}/${airtableRecordId}`,
       {
         headers: {
           'Authorization': `Bearer ${config.apiToken}`,
@@ -279,7 +279,7 @@ async function fetchDynamicFieldMapping(config = null, module = null) {
       }
       
       // Use correct field names from your Zoho Fields table
-      const zohoFieldName = fields['Field Name']; // Zoho field name
+      const zohoFieldName = fields['api_name']; // Zoho field name
       
       // Try multiple field sources for the Airtable field ID
       let airtableFieldId = fields['Airtable Field ID'] || fields['Field ID'] || fields['Airtable Field'];
@@ -363,7 +363,7 @@ async function getRecordsModifiedSince(sinceTimestamp, config = null) {
       }
 
       const response = await axios.get(
-        `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`,
+        `${config.apiUrl}/${config.baseId}/${config.tableId}`,
         {
           headers: {
             'Authorization': `Bearer ${config.apiToken}`,
@@ -417,7 +417,7 @@ async function getAllRecordsForSync(config = null) {
       }
 
       const response = await axios.get(
-        `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`,
+        `${config.apiUrl}/${config.baseId}/${config.tableId}`,
         {
           headers: {
             'Authorization': `Bearer ${config.apiToken}`,
@@ -457,7 +457,7 @@ async function getRecordById(recordId, config = null) {
 
   try {
     const response = await axios.get(
-      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}/${recordId}`,
+      `${config.apiUrl}/${config.baseId}/${config.tableId}/${recordId}`,
       {
         headers: {
           'Authorization': `Bearer ${config.apiToken}`,
@@ -546,7 +546,7 @@ async function updateAirtableField(recordId, fieldName, value, config = null) {
     const fieldToUpdate = fieldId || fieldName; // Use field ID if found, otherwise use name
     
     const response = await axios.patch(
-      `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}/${recordId}`,
+      `${config.apiUrl}/${config.baseId}/${config.tableId}/${recordId}`,
       {
         fields: {
           [fieldToUpdate]: value
@@ -695,7 +695,7 @@ async function createAirtableRecordsBulk(recordsData, config = null) {
     const batch = recordsData.slice(i, i + batchSize);
     
     try {
-      const url = `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`;
+      const url = `${config.apiUrl}/${config.baseId}/${config.tableId}`;
       const response = await axios.post(
         url,
         { records: batch },
@@ -752,7 +752,7 @@ async function updateAirtableRecordsBulk(updates, config = null) {
     const batch = updates.slice(i, i + batchSize);
     
     try {
-      const url = `${config.apiUrl}/${config.baseId}/${encodeURIComponent(config.tableName)}`;
+      const url = `${config.apiUrl}/${config.baseId}/${config.tableId}`;
       const response = await axios.patch(
         url,
         { records: batch },

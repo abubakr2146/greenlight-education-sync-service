@@ -257,7 +257,7 @@ class BulkSync {
     if (!config) throw new Error('Airtable config not found');
     try {
       const airtableModuleConfig = await getModuleConfig(config, this.moduleName);
-      const tableNameToUse = airtableModuleConfig.tableName;
+      const tableIdToUse = airtableModuleConfig.tableId;
 
       if (this.specificZohoId) {
         console.log(`📥 Fetching corresponding Airtable record for Zoho ID: ${this.specificZohoId}...`);
@@ -282,12 +282,12 @@ class BulkSync {
         // Fetch all records (existing logic)
         let allRecords = [];
         let offset = null;
-        console.log(`📥 Fetching complete Airtable records for ${this.moduleName} from table '${tableNameToUse}'...`);
+        console.log(`📥 Fetching complete Airtable records for ${this.moduleName} from table '${tableIdToUse}'...`);
         do {
           const params = { pageSize: 100, sort: [{ field: this.airtableLastModifiedField, direction: 'desc' }] };
           if (offset) params.offset = offset;
           const response = await axios.get(
-            `${config.apiUrl}/${config.baseId}/${encodeURIComponent(tableNameToUse)}`,
+            `${config.apiUrl}/${config.baseId}/${tableIdToUse}`,
             {
               headers: { 'Authorization': `Bearer ${config.apiToken}`, 'Content-Type': 'application/json' },
               params: params

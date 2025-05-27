@@ -25,6 +25,29 @@ const SYNC_DIRECTIONS = {
   AIRTABLE_TO_ZOHO: 'airtable_to_zoho'
 };
 
+// Helper function to format datetime values for Zoho
+function formatDateTimeForZoho(value, zohoFieldName) {
+  // Check if this looks like a datetime field and has a datetime value
+  if (zohoFieldName && (zohoFieldName.includes('Time') || zohoFieldName.includes('Date')) && value) {
+    // Check if value looks like an ISO datetime string
+    if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+      try {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+          // Convert to the format Zoho expects: YYYY-MM-DDTHH:mm:ss+00:00
+          // This ensures Zoho interprets it as UTC and converts to its timezone correctly
+          return date.toISOString().replace('.000Z', '+00:00');
+        }
+      } catch (error) {
+        console.warn(`[SyncService] Failed to parse datetime value for field ${zohoFieldName}: ${value}`);
+      }
+    }
+  }
+  
+  // Return original value if not a datetime or parsing failed
+  return value;
+}
+
 // Helper function to get field mapping for a specific field using cache (module-aware)
 async function getFieldMappingFor(zohoFieldName, module = 'Leads') {
   await fieldMappingCache.ensureModuleInitialized(module);
@@ -204,7 +227,15 @@ async function syncFromAirtableToZoho(airtableRecordId, zohoFieldName, newValue,
     const zohoApiName = mapping.zoho;
     // recordSyncedValue is called in syncField for A->Z
 
-    const fieldUpdates = { [zohoApiName]: newValue };
+    // Format datetime values properly for Zoho
+    const formattedValue = formatDateTimeForZoho(newValue, zohoApiName);
+    
+    // Debug logging for datetime fields
+    if (zohoApiName && zohoApiName.includes('Time') && newValue !== formattedValue) {
+      console.log(`[SyncService][${module}] Datetime conversion: ${zohoApiName}: '${newValue}' → '${formattedValue}'`);
+    }
+    
+    const fieldUpdates = { [zohoApiName]: formattedValue };
     await updateZohoRecord(zohoRecordId, fieldUpdates, module);
     console.log(`[SyncService][${module}] Synced Airtable record ${airtableRecordId} (field for Zoho: '${zohoApiName}') to Zoho record ${zohoRecordId}.`);
     return true;
@@ -345,7 +376,9 @@ async function createZohoRecordFromAirtable(airtableRecordId, airtableRecordData
       const airtableValue = airtableRecordData.fields[airtableFieldName];
 
       if (airtableValue !== undefined && airtableValue !== null && String(airtableValue).trim() !== '') {
-        zohoRecordPayload[mapping.zoho] = airtableValue;
+        // Format datetime values properly for Zoho
+        const formattedValue = formatDateTimeForZoho(airtableValue, mapping.zoho);
+        zohoRecordPayload[mapping.zoho] = formattedValue;
       }
     }
     
