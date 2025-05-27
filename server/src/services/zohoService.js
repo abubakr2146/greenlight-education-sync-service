@@ -49,7 +49,7 @@ async function getRecordDetails(recordId, module = 'Leads', config = null) {
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
+    const modulePlural = await getZohoModulePluralName(module);
     const response = await axios.get(
       `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
       {
@@ -67,7 +67,7 @@ async function getRecordDetails(recordId, module = 'Leads', config = null) {
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
+          const modulePlural = await getZohoModulePluralName(module);
           const response = await axios.get(
             `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
             {
@@ -106,7 +106,7 @@ async function updateZohoRecord(recordId, fieldUpdates, module = 'Leads', config
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
+    const modulePlural = await getZohoModulePluralName(module);
     const response = await axios.put(
       `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
       {
@@ -128,7 +128,7 @@ async function updateZohoRecord(recordId, fieldUpdates, module = 'Leads', config
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
+          const modulePlural = await getZohoModulePluralName(module);
           const response = await axios.put(
             `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
             {
@@ -170,7 +170,7 @@ async function createZohoRecord(recordData, module = 'Leads', config = null) {
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
+    const modulePlural = await getZohoModulePluralName(module);
     const response = await axios.post(
       `${config.apiDomain}/crm/v2/${modulePlural}`,
       {
@@ -192,7 +192,7 @@ async function createZohoRecord(recordData, module = 'Leads', config = null) {
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
+          const modulePlural = await getZohoModulePluralName(module);
           const response = await axios.post(
             `${config.apiDomain}/crm/v2/${modulePlural}`,
             {
@@ -234,7 +234,7 @@ async function searchZohoRecords(criteria, module = 'Leads', config = null) {
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
+    const modulePlural = await getZohoModulePluralName(module);
     const response = await axios.get(
       `${config.apiDomain}/crm/v2/${modulePlural}/search`,
       {
@@ -254,7 +254,7 @@ async function searchZohoRecords(criteria, module = 'Leads', config = null) {
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
+          const modulePlural = await getZohoModulePluralName(module);
           const response = await axios.get(
             `${config.apiDomain}/crm/v2/${modulePlural}/search`,
             {
@@ -296,7 +296,7 @@ async function getRecordsModifiedSince(sinceTimestamp, module = 'Leads', config 
     }
     
     const sinceDate = new Date(sinceTimestamp).toISOString();
-    const modulePlural = getZohoModulePluralName(module);
+    const modulePlural = await getZohoModulePluralName(module);
     
     const response = await axios.get(
       `${config.apiDomain}/crm/v2/${modulePlural}`,
@@ -328,7 +328,7 @@ async function getRecordsModifiedSince(sinceTimestamp, module = 'Leads', config 
         // Retry the request with new token
         try {
           const sinceDate = new Date(sinceTimestamp).toISOString();
-          const modulePlural = getZohoModulePluralName(module);
+          const modulePlural = await getZohoModulePluralName(module);
           
           const response = await axios.get(
             `${config.apiDomain}/crm/v2/${modulePlural}`,
@@ -382,7 +382,7 @@ async function getMultipleRecordDetails(recordIds, module = 'Leads', config = nu
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
+    const modulePlural = await getZohoModulePluralName(module);
     const idsParam = recordIds.join(',');
     
     const response = await axios.get(
@@ -406,7 +406,7 @@ async function getMultipleRecordDetails(recordIds, module = 'Leads', config = nu
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
+          const modulePlural = await getZohoModulePluralName(module);
           const idsParam = recordIds.join(',');
           
           const response = await axios.get(
@@ -451,7 +451,7 @@ async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
       }
     }
     
-    const modulePlural = getZohoModulePluralName(module);
+    const modulePlural = await getZohoModulePluralName(module);
     const response = await axios.delete(
       `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
       {
@@ -476,7 +476,7 @@ async function deleteZohoRecord(recordId, module = 'Leads', config = null) {
       if (refreshed) {
         // Retry the request with new token
         try {
-          const modulePlural = getZohoModulePluralName(module);
+          const modulePlural = await getZohoModulePluralName(module);
           const response = await axios.delete(
             `${config.apiDomain}/crm/v2/${modulePlural}/${recordId}`,
             {
@@ -586,7 +586,7 @@ async function createZohoRecordsBulk(recordsData, module = 'Leads', config = nul
   const results = [];
   const errors = [];
   const batchSize = 100; // Zoho API limit
-  const modulePlural = getZohoModulePluralName(module);
+  const modulePlural = await getZohoModulePluralName(module);
   
   for (let i = 0; i < recordsData.length; i += batchSize) {
     const batch = recordsData.slice(i, i + batchSize);
@@ -711,7 +711,7 @@ async function updateZohoRecordsBulk(updates, module = 'Leads', config = null) {
   const results = [];
   const errors = [];
   const batchSize = 100; // Zoho API limit
-  const modulePlural = getZohoModulePluralName(module);
+  const modulePlural = await getZohoModulePluralName(module);
   
   for (let i = 0; i < updates.length; i += batchSize) {
     const batch = updates.slice(i, i + batchSize);

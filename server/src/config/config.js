@@ -1,72 +1,79 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 // Field mapping configuration
 const FIELD_MAPPING = {
   PHONE: {
-    zoho: 'Phone',        // Zoho field name for phone
-    airtable: 'Phone'     // Airtable field name for phone (we'll get the field ID dynamically)
+    zoho: "Phone", // Zoho field name for phone
+    airtable: "Phone", // Airtable field name for phone (we'll get the field ID dynamically)
   },
   ZOHO_ID: {
-    airtable: 'Zoho CRM ID'  // Airtable field name that stores Zoho lead ID
+    airtable: "Zoho CRM ID", // Airtable field name that stores Zoho lead ID
   },
   AIRTABLE_ID: {
-    zoho: 'Airtable_Record_ID'  // Zoho field name that stores Airtable record ID
-  }
+    zoho: "Airtable_Record_ID", // Zoho field name that stores Airtable record ID
+  },
 };
 
 // Fields to ignore during sync (computed fields, timestamps, etc.)
 const IGNORED_FIELDS = {
   zoho: [
-    'Modified_Time',
-    'Created_Time', 
-    'Modified_By',
-    'Created_By',
-    'id',
-    'smsmagic4__Plain_Phone',    // SMS Magic computed field
-    'smsmagic4__Plain_Mobile',   // SMS Magic computed field
-    'Lead_Conversion_Time',
-    'Data_Processing_Basis_Details',
-    'Approval',
-    'Data_Source',
-    'Process_Flow',
-    'Locked__s',
-    'Partner Name',
-    'Email_Opt_Out',
-    'Last_Activity_Time',
-    'Owner',
-    'From_Airtable',
-    'Exchange_Rate',
-    'Layout',
-    'Tag',
-    'Currency',
- 'Institution',
-'Institution_Record_IDs'
+    "Modified_Time",
+    "Created_Time",
+    "Modified_By",
+    "Created_By",
+    "id",
+    "smsmagic4__Plain_Phone", // SMS Magic computed field
+    "smsmagic4__Plain_Mobile", // SMS Magic computed field
+    "Lead_Conversion_Time",
+    "Data_Processing_Basis_Details",
+    "Approval",
+    "Data_Source",
+    "Process_Flow",
+    "Locked__s",
+    "Partner Name",
+    "Email_Opt_Out",
+    "Last_Activity_Time",
+    "Owner",
+    "From_Airtable",
+    "Exchange_Rate",
+    "Layout",
+    "Tag",
+    "Currency",
+    "Institution",
+    "Institution_Record_IDs",
+    "City",
+    "State",
+   
+
   ],
   airtable: [
-    'Last Modified Time',
-    'Created Time',
-    'Last Modified By',
-    'Auto Number',
-    'Record ID',
-    'Locked__s',
-    'Partner Name',
-    'Exchange_Rate',
-    'From_Airtable',
-    'Email_Opt_Out',
-    'Last_Activity_Time',
-    'Owner',
-     'Currency',
-  'Institution',
-    'Institution_Record_IDs'
-  ]
+    "Last Modified Time",
+    "Created Time",
+    "Last Modified By",
+    "Auto Number",
+    "Record ID",
+    "Locked__s",
+    "Partner Name",
+    "Exchange_Rate",
+    "From_Airtable",
+    "Email_Opt_Out",
+    "Last_Activity_Time",
+    "Owner",
+    "Currency",
+    "Institution",
+    "Institution_Record_IDs",
+    "City",
+    "State",
+   
+  ],
 };
 
 // Load Zoho config
 function loadZohoConfig() {
   try {
-    const configPath = path.join(__dirname, '../../../setup/zoho-config.json');
-    const configData = fs.readFileSync(configPath, 'utf8');
+    const configPath = path.join(__dirname, "../../../setup/zoho-config.json");
+    const configData = fs.readFileSync(configPath, "utf8");
     return JSON.parse(configData);
   } catch (error) {
     return null;
@@ -76,8 +83,11 @@ function loadZohoConfig() {
 // Load Airtable config
 function loadAirtableConfig() {
   try {
-    const configPath = path.join(__dirname, '../../../setup/airtable-config.json');
-    const configData = fs.readFileSync(configPath, 'utf8');
+    const configPath = path.join(
+      __dirname,
+      "../../../setup/airtable-config.json"
+    );
+    const configData = fs.readFileSync(configPath, "utf8");
     return JSON.parse(configData);
   } catch (error) {
     return null;
@@ -87,7 +97,7 @@ function loadAirtableConfig() {
 // Save Zoho config
 function saveZohoConfig(config) {
   try {
-    const configPath = path.join(__dirname, '../../../setup/zoho-config.json');
+    const configPath = path.join(__dirname, "../../../setup/zoho-config.json");
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     return true;
   } catch (error) {
@@ -98,33 +108,35 @@ function saveZohoConfig(config) {
 // Helper function to check if a field should be ignored
 function shouldIgnoreField(fieldName, system) {
   const ignoredFields = IGNORED_FIELDS[system] || [];
-  
+
   // System fields that start with $ should always be ignored (Zoho-specific)
-  if (system === 'zoho' && fieldName && fieldName.startsWith('$')) {
+  if (system === "zoho" && fieldName && fieldName.startsWith("$")) {
     return true;
   }
-  
+
   return ignoredFields.includes(fieldName);
 }
 
 // Filter out ignored fields from a list
 function filterIgnoredFields(fieldNames, system) {
-  return fieldNames.filter(fieldName => !shouldIgnoreField(fieldName, system));
+  return fieldNames.filter(
+    (fieldName) => !shouldIgnoreField(fieldName, system)
+  );
 }
 
 // Get dynamic field mapping (or fall back to static mapping)
-async function getFieldMapping(module = 'Leads') {
+async function getFieldMapping(module = "Leads") {
   try {
-    const { fetchDynamicFieldMapping } = require('../services/airtableService');
+    const { fetchDynamicFieldMapping } = require("../services/airtableService");
     const dynamicMapping = await fetchDynamicFieldMapping(null, module);
-    
+
     if (dynamicMapping && Object.keys(dynamicMapping).length > 0) {
       return dynamicMapping;
     }
   } catch (error) {
     // Failed to fetch dynamic mapping
   }
-  
+
   return FIELD_MAPPING;
 }
 
@@ -137,11 +149,11 @@ function loadAirtableConfigForModule(moduleName = null) {
 
   // Clone the config to avoid mutating the original
   const moduleConfig = { ...baseConfig };
-  
+
   // Module-specific overrides will be applied by the services
   // that use getModuleTableConfig from moduleConfigService
   moduleConfig.currentModule = moduleName;
-  
+
   return moduleConfig;
 }
 
@@ -154,5 +166,5 @@ module.exports = {
   saveZohoConfig,
   shouldIgnoreField,
   filterIgnoredFields,
-  getFieldMapping
+  getFieldMapping,
 };

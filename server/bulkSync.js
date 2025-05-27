@@ -154,12 +154,17 @@ class BulkSync {
       }
 
       this.showResults();
+      
+      // Cleanup cache after successful completion
+      fieldMappingCache.destroyModule(this.moduleName);
+      console.log(`\n✅ Field mapping cache for ${this.moduleName} destroyed.`);
 
     } catch (error) {
       console.error(`❌ Sync for ${this.moduleName} failed:`, error.message);
       if (this.verbose) console.error(error.stack);
       this.stats.errors++;
-    } finally {
+      
+      // Cleanup cache after error
       fieldMappingCache.destroyModule(this.moduleName);
       console.log(`\n✅ Field mapping cache for ${this.moduleName} destroyed.`);
     }
@@ -197,7 +202,8 @@ class BulkSync {
         let allRecordSummaries = [];
         let page = 1;
         const perPage = 200;
-        const zohoModuleApiName = getZohoModulePluralName(this.moduleName);
+        const zohoModuleApiName = await getZohoModulePluralName(this.moduleName);
+        console.log(`🔍 Using Zoho API module name: ${zohoModuleApiName} for ${this.moduleName}`);
         console.log(`📥 Fetching Zoho ${this.moduleName} record IDs & timestamps...`);
         while (true) {
           const response = await axios.get(

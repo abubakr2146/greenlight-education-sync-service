@@ -20,7 +20,8 @@
       "Bash(cp:*)",
       "Bash(chmod:*)",
       "Bash(npm test)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

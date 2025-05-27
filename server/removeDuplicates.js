@@ -162,7 +162,7 @@ class DuplicateRemover {
         }
       }
 
-      const modulePlural = getZohoModulePluralName(this.moduleName);
+      const modulePlural = await getZohoModulePluralName(this.moduleName);
       let allRecords = [];
       let page = 1;
       const perPage = 200;

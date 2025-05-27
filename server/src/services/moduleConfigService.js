@@ -150,8 +150,32 @@ async function isValidModule(moduleName, config = null) {
  * @param {string} moduleName - The API name of the module
  * @returns {string} Plural form of the module name
  */
-function getZohoModulePluralName(moduleName) {
-  // Handle special cases
+async function getZohoModulePluralName(moduleName) {
+  // Check if this is a custom module by looking up the configuration
+  try {
+    let moduleConfig;
+    if (moduleCache.has(moduleName)) {
+      moduleConfig = moduleCache.get(moduleName);
+    } else {
+      // Try to fetch the module config if not in cache
+      try {
+        moduleConfig = await getModuleConfig(moduleName);
+      } catch (configError) {
+        // Fall through to standard handling if config lookup fails
+        moduleConfig = null;
+      }
+    }
+    
+    // If it's a custom module, use the api_name field (not module_name)
+    if (moduleConfig && moduleConfig.fields && moduleConfig.fields.module_name && 
+        moduleConfig.fields.module_name.startsWith('CustomModule')) {
+      return moduleConfig.fields.api_name;
+    }
+  } catch (error) {
+    // Fall through to standard handling if config lookup fails
+  }
+
+  // Handle special cases for standard modules
   const pluralMap = {
     'Lead': 'Leads',
     'Leads': 'Leads',
