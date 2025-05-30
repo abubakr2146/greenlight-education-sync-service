@@ -272,6 +272,53 @@ function findMatchingZohoField(fieldName, headers) {
 }
 
 /**
+ * Get existing field records with their Zoho field links
+ */
+function getExistingFieldsWithZohoLinks(fieldIds, headers) {
+  const result = {};
+  
+  if (!fieldIds || fieldIds.length === 0) {
+    return result;
+  }
+  
+  try {
+    // Process field IDs in batches
+    for (let i = 0; i < fieldIds.length; i += 10) {
+      const batchIds = fieldIds.slice(i, i + 10);
+      const formulaParts = batchIds.map(id => `{Field ID}="${id}"`);
+      const formula = formulaParts.length > 1 ? `OR(${formulaParts.join(",")})` : formulaParts[0];
+      const encodedFormula = encodeURIComponent(formula);
+      
+      const url = `${fieldTableUrl}?filterByFormula=${encodedFormula}&fields%5B%5D=Field%20ID&fields%5B%5D=Zoho%20Fields`;
+      
+      const response = UrlFetchApp.fetch(url, { 
+        method: "get", 
+        headers: headers,
+        muteHttpExceptions: true
+      });
+      
+      if (response.getResponseCode() === 200) {
+        const data = JSON.parse(response.getContentText());
+        
+        if (data.records) {
+          data.records.forEach(record => {
+            const fieldId = record.fields["Field ID"];
+            const zohoFields = record.fields["Zoho Fields"] || [];
+            if (fieldId && zohoFields.length > 0) {
+              result[fieldId] = zohoFields;
+            }
+          });
+        }
+      }
+    }
+  } catch (err) {
+    Logger.log(`Error fetching existing field Zoho links: ${err.toString()}`);
+  }
+  
+  return result;
+}
+
+/**
  * Process all tables, fields and views in the most efficient way possible
  */
 function processAllTablesBulk(tables, baseRecordId, timestamp) {
@@ -300,6 +347,51 @@ function processAllTablesBulk(tables, baseRecordId, timestamp) {
   const tableBatchSize = 20; // Process 20 tables at a time to manage memory
   const totalTableBatches = Math.ceil(tables.length / tableBatchSize);
   
+  // Track which Zoho fields have already been linked to prevent duplicates
+  const usedZohoFieldIds = new Set();
+  
+  // First, get all existing field records to check which Zoho fields are already linked
+  try {
+    Logger.log("Fetching existing field records to check Zoho field links...");
+    let offset = null;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const url = fieldTableUrl + (offset ? `?offset=${offset}` : '');
+      const response = UrlFetchApp.fetch(url, { 
+        method: "get", 
+        headers: headers,
+        muteHttpExceptions: true
+      });
+      
+      if (response.getResponseCode() === 200) {
+        const data = JSON.parse(response.getContentText());
+        
+        // Check each existing field record for Zoho field links
+        if (data.records) {
+          data.records.forEach(record => {
+            if (record.fields["Zoho Fields"] && record.fields["Zoho Fields"].length > 0) {
+              record.fields["Zoho Fields"].forEach(zohoFieldId => {
+                usedZohoFieldIds.add(zohoFieldId);
+              });
+            }
+          });
+        }
+        
+        // Check if there are more records
+        offset = data.offset;
+        hasMore = !!offset;
+      } else {
+        Logger.log("Error fetching existing field records: " + response.getContentText());
+        hasMore = false;
+      }
+    }
+    
+    Logger.log(`Found ${usedZohoFieldIds.size} Zoho fields already linked in existing records`);
+  } catch (error) {
+    Logger.log("Error checking existing Zoho field links: " + error.toString());
+  }
+  
   for (let tableBatchIndex = 0; tableBatchIndex < tables.length; tableBatchIndex += tableBatchSize) {
     const currentBatchNumber = Math.floor(tableBatchIndex / tableBatchSize) + 1;
     const tableBatch = tables.slice(tableBatchIndex, tableBatchIndex + tableBatchSize);
@@ -318,10 +410,11 @@ function processAllTablesBulk(tables, baseRecordId, timestamp) {
       
       // Add all fields for this table to the batch
       if (table.fields && table.fields.length > 0) {
+        // First, get existing field records to check their current Zoho field links
+        const fieldIds = table.fields.map(f => f.id);
+        const existingFieldsWithLinks = getExistingFieldsWithZohoLinks(fieldIds, headers);
+        
         const tableFieldRecords = table.fields.map(field => {
-          // Search for matching Zoho field by name
-          const matchingZohoFieldId = findMatchingZohoField(field.name, headers);
-          
           const fieldRecord = {
             "fields": {
               "Field ID": field.id,
@@ -334,9 +427,25 @@ function processAllTablesBulk(tables, baseRecordId, timestamp) {
             }
           };
           
-          // Add Zoho Fields link if match found
-          if (matchingZohoFieldId) {
-            fieldRecord.fields["Zoho Fields"] = [matchingZohoFieldId];
+          // Check if this field already has a Zoho field link
+          const existingZohoLinks = existingFieldsWithLinks[field.id];
+          if (existingZohoLinks && existingZohoLinks.length > 0) {
+            // Preserve existing Zoho field links
+            fieldRecord.fields["Zoho Fields"] = existingZohoLinks;
+            existingZohoLinks.forEach(linkId => usedZohoFieldIds.add(linkId));
+            Logger.log(`Preserving existing Zoho field links for ${field.name}: ${existingZohoLinks.join(', ')}`);
+          } else {
+            // Only search for new matching if no existing link
+            const matchingZohoFieldId = findMatchingZohoField(field.name, headers);
+            
+            // Add Zoho Fields link if match found and not already used
+            if (matchingZohoFieldId && !usedZohoFieldIds.has(matchingZohoFieldId)) {
+              fieldRecord.fields["Zoho Fields"] = [matchingZohoFieldId];
+              usedZohoFieldIds.add(matchingZohoFieldId);
+              Logger.log(`Linked field ${field.name} to Zoho field ${matchingZohoFieldId}`);
+            } else if (matchingZohoFieldId && usedZohoFieldIds.has(matchingZohoFieldId)) {
+              Logger.log(`Skipped duplicate link: Zoho field ${matchingZohoFieldId} already linked to another field`);
+            }
           }
           
           return fieldRecord;
