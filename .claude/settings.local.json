@@ -24,5 +24,6 @@
       "Bash(sed:*)"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": false
 }

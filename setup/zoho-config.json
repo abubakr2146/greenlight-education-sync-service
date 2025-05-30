@@ -1,10 +1,10 @@
 {
   "clientId": "1000.5QZ1KE2WHYQ83QVBXK20LCT1K9WAJV",
   "clientSecret": "a9030b4a3f69392969a40fe533a27250ca326e7b62",
-  "redirectUri": "http://localhost:3000/oauth/callback",
+  "redirectUri": "https://n8n.greenlight.education/rest/oauth2-credential/callback",
   "refreshToken": "1000.ca9e92dac47f1adad5aa84bea99b77c6.df3bfa82eee1114daa19d476527265dc",
-  "accessToken": "1000.168b29bd12637c77b8afab1f962259fb.a6bc2f7485c8c944c05fb0106c19b7e4",
-  "tokenExpiry": 1748353777133,
+  "accessToken": "1000.864cdc6ed414fb0925bafb7e1ffb9de3.ce8e7f2706cf57fb2e14d03767cb4249",
+  "tokenExpiry": 1748543749481,
   "modules": [
     "Leads"
   ],

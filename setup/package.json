@@ -6,6 +6,10 @@
   "scripts": {
     "setup-zoho": "node zoho-setup.js setup",
     "refresh-token": "node zoho-setup.js refresh",
+    "webhook:create": "node zoho-webhook-setup.js create",
+    "webhook:list": "node zoho-webhook-setup.js list",
+    "webhook:delete": "node zoho-webhook-setup.js delete",
+    "webhook:delete-all": "node zoho-webhook-setup.js delete-all",
     "start": "node index.js"
   },
   "dependencies": {

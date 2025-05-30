@@ -1,0 +1,174 @@
+{
+  "webhookUrl": "https://n8n.greenlight.education/webhook/zoho-edit",
+  "webhookSecret": "",
+  "createdWebhooks": [
+    {
+      "module": "Leads",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T05:36:33+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Leads",
+          "resource_id": "4717452000000002175",
+          "resource_name": "Leads",
+          "channel_id": "1748496993128362"
+        }
+      ]
+    },
+    {
+      "module": "Partners",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T05:36:33+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Partners",
+          "resource_id": "4717452000027889012",
+          "resource_name": "Partners",
+          "channel_id": "1748496993503295"
+        }
+      ]
+    },
+    {
+      "module": "Leads",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T07:58:36+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Leads",
+          "resource_id": "4717452000000002175",
+          "resource_name": "Leads",
+          "channel_id": "1748505516240567"
+        }
+      ]
+    },
+    {
+      "module": "Partners",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T07:58:37+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Partners",
+          "resource_id": "4717452000027889012",
+          "resource_name": "Partners",
+          "channel_id": "1748505517267344"
+        }
+      ]
+    },
+    {
+      "module": "Leads",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T07:58:55+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Leads",
+          "resource_id": "4717452000000002175",
+          "resource_name": "Leads",
+          "channel_id": "1748505535389195"
+        }
+      ]
+    },
+    {
+      "module": "Partners",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T07:58:55+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Partners",
+          "resource_id": "4717452000027889012",
+          "resource_name": "Partners",
+          "channel_id": "1748505535814246"
+        }
+      ]
+    },
+    {
+      "module": "Leads",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:15+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Leads",
+          "resource_id": "4717452000000002175",
+          "resource_name": "Leads",
+          "channel_id": "1748540175878723"
+        }
+      ]
+    },
+    {
+      "module": "Partners",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:16+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Partners",
+          "resource_id": "4717452000027889012",
+          "resource_name": "Partners",
+          "channel_id": "1748540176894215"
+        }
+      ]
+    },
+    {
+      "module": "Contacts",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:17+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Contacts",
+          "resource_id": "4717452000000002179",
+          "resource_name": "Contacts",
+          "channel_id": "1748540177327231"
+        }
+      ]
+    },
+    {
+      "module": "Calls_Meetings",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:17+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Calls_Meetings",
+          "resource_id": "4717452000028164019",
+          "resource_name": "Calls_Meetings",
+          "channel_id": "1748540177738557"
+        }
+      ]
+    },
+    {
+      "module": "Clients",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:18+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Clients",
+          "resource_id": "4717452000028216350",
+          "resource_name": "Clients",
+          "channel_id": "1748540178123642"
+        }
+      ]
+    },
+    {
+      "module": "Tutors",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:18+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Tutors",
+          "resource_id": "4717452000028217690",
+          "resource_name": "Tutors",
+          "channel_id": "1748540178526404"
+        }
+      ]
+    },
+    {
+      "module": "Students",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:18+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Students",
+          "resource_id": "4717452000028215002",
+          "resource_name": "Students",
+          "channel_id": "1748540178926271"
+        }
+      ]
+    },
+    {
+      "module": "Contracts",
+      "events": [
+        {
+          "channel_expiry": "2025-05-30T17:36:19+05:00",
+          "resource_uri": "https://www.zohoapis.com/crm/v2/Contracts",
+          "resource_id": "4717452000028223332",
+          "resource_name": "Contracts",
+          "channel_id": "1748540179347716"
+        }
+      ]
+    }
+  ]
+}
